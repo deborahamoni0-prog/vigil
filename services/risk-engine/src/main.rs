@@ -11,7 +11,6 @@ use tokio::sync::Mutex;
 use vigil_common::config::Deployment;
 use vigil_common::messages::{
     BlockMessage, EventMessage, LiquidationSignal, STREAM_NAME, SUBJECT_BLOCKS, SUBJECT_EVENTS,
-    SUBJECT_SIGNALS,
 };
 use vigil_risk_engine::api::{self, ApiState};
 use vigil_risk_engine::engine::RiskEngine;

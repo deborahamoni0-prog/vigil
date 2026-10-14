@@ -186,7 +186,7 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
     use std::sync::Mutex;
 
-    use alloy::primitives::{Address, U256};
+    use alloy::primitives::U256;
     use vigil_common::model::{PoolState, Quote};
 
     use super::*;
@@ -214,15 +214,6 @@ mod tests {
                 }
             })
             .collect()
-    }
-
-    fn other(name: &str) -> DecodedLog {
-        DecodedLog {
-            log_index: 0,
-            event: PoolEvent::Other {
-                name: name.to_string(),
-            },
-        }
     }
 
     #[derive(Default)]

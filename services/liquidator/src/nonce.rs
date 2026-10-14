@@ -48,7 +48,7 @@ pub struct InFlight {
 /// Fee bumped by `MIN_FEE_BUMP_BPS`, rounded up, and always at least one wei higher.
 pub fn bump_fee(fee: u128) -> u128 {
     let factor = 10_000 + MIN_FEE_BUMP_BPS;
-    let bumped = (fee * factor + 9_999) / 10_000;
+    let bumped = (fee * factor).div_ceil(10_000);
     bumped.max(fee + 1)
 }
 

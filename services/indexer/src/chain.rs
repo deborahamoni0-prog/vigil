@@ -190,7 +190,7 @@ impl ChainReader for RpcChain {
                 total_debt_scaled: totals.totalDebtScaled,
                 supply_index: stored.supplyIndex,
                 debt_index: stored.debtIndex,
-                last_accrual: last_accrual,
+                last_accrual,
             },
             quote: Quote {
                 debt_index: projected.debtIndex,

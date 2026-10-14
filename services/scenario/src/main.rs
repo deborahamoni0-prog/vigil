@@ -357,7 +357,7 @@ fn ensure_liquidator_keystore(_chain: &Chain, args: &Args) -> anyhow::Result<Pri
     std::fs::create_dir_all(&args.keystore_dir)?;
     let target = args.keystore_dir.join("liquidator.json");
     if !Path::new(&target).exists() {
-        let key_hex = format!("0x{}", hex_of(&key.to_bytes().to_vec()));
+        let key_hex = format!("0x{}", hex_of(key.to_bytes().as_ref()));
         let status = Command::new("cast")
             .args([
                 "wallet",
