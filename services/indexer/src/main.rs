@@ -35,18 +35,29 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let deployment = Deployment::load(&args.deployment_file)?;
 
-    let pool = PgPoolOptions::new().max_connections(5).connect(&args.database_url).await?;
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&args.database_url)
+        .await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
 
     let nats = async_nats::connect(&args.nats_url).await?;
     let sink = NatsSink::connect(nats).await?;
 
-    let provider = ProviderBuilder::new().connect_http(args.rpc_url.parse()?).erased();
+    let provider = ProviderBuilder::new()
+        .connect_http(args.rpc_url.parse()?)
+        .erased();
     let mut by_bit: [Option<Address>; MAX_COLLATERAL] = [None; MAX_COLLATERAL];
     for c in &deployment.collaterals {
         by_bit[c.bit_index as usize] = Some(c.address);
     }
-    let chain = RpcChain::new(provider, deployment.pool, deployment.oracle, deployment.debt, by_bit);
+    let chain = RpcChain::new(
+        provider,
+        deployment.pool,
+        deployment.oracle,
+        deployment.debt,
+        by_bit,
+    );
 
     let store = PgIndexerStore::new(pool);
     let mut indexer = Indexer::resume(chain, sink, store, args.start_block).await?;

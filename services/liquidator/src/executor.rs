@@ -124,7 +124,12 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
         let latest = self.chain.latest_nonce().await?;
         let pending = self.chain.pending_nonce().await?;
         self.book.reconcile(latest, pending);
-        tracing::info!(latest, pending, next = self.book.next_nonce(), "nonce book reconciled");
+        tracing::info!(
+            latest,
+            pending,
+            next = self.book.next_nonce(),
+            "nonce book reconciled"
+        );
         self.settle_pending().await
     }
 
@@ -152,7 +157,11 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
             return Ok(Outcome::Skipped("stale signal"));
         }
         // A redelivered signal must not produce a second transaction for the same borrower.
-        if self.book.in_flight().any(|t| purpose_borrower(&t.purpose) == Some(signal.borrower)) {
+        if self
+            .book
+            .in_flight()
+            .any(|t| purpose_borrower(&t.purpose) == Some(signal.borrower))
+        {
             return Ok(Outcome::Skipped("already in flight"));
         }
         // Fresh health factor from the chain, not from the signal.
@@ -186,7 +195,11 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
         for candidate in candidates {
             if candidate.intent.deadline < now {
                 reason = "intent expired";
-            } else if self.chain.nonce_used(signal.borrower, candidate.intent.nonce).await? {
+            } else if self
+                .chain
+                .nonce_used(signal.borrower, candidate.intent.nonce)
+                .await?
+            {
                 reason = "intent already used";
             } else {
                 usable = Some(candidate);
@@ -198,13 +211,19 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
         };
 
         if self.chain.auction_start(signal.borrower).await? == 0 {
-            return match self.send_start_auction(signal.borrower, &signal.trace_id).await {
+            return match self
+                .send_start_auction(signal.borrower, &signal.trace_id)
+                .await
+            {
                 Ok((nonce, hash)) => Ok(Outcome::StartedAuction { nonce, hash }),
                 Err(e) => self.skip_after_failed_send(e).await,
             };
         }
 
-        let bonus = self.chain.bonus_bps(signal.borrower, stored.intent.collateralAsset).await?;
+        let bonus = self
+            .chain
+            .bonus_bps(signal.borrower, stored.intent.collateralAsset)
+            .await?;
         let market = MarketView {
             current_block: current,
             bonus_bps: bonus,
@@ -212,12 +231,10 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
             gas_cost_debt: self.cfg.gas_cost_debt,
         };
         match self.strategy.decide(signal, &market) {
-            Decision::Strike { repay } => {
-                match self.send_liquidate(signal, &stored, repay).await {
-                    Ok((nonce, hash)) => Ok(Outcome::Struck { nonce, hash, repay }),
-                    Err(e) => self.skip_after_failed_send(e).await,
-                }
-            }
+            Decision::Strike { repay } => match self.send_liquidate(signal, &stored, repay).await {
+                Ok((nonce, hash)) => Ok(Outcome::Struck { nonce, hash, repay }),
+                Err(e) => self.skip_after_failed_send(e).await,
+            },
             Decision::Wait { .. } => Ok(Outcome::Waiting),
             Decision::Skip { reason } => Ok(Outcome::Skipped(reason)),
         }
@@ -265,7 +282,11 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
         }
 
         // 2. Reorg watch: a confirmed transaction that vanished must be sent again (RS-15).
-        let watched: Vec<(u64, InFlight, u64)> = self.watching.iter().map(|(n, (t, b))| (*n, t.clone(), *b)).collect();
+        let watched: Vec<(u64, InFlight, u64)> = self
+            .watching
+            .iter()
+            .map(|(n, (t, b))| (*n, t.clone(), *b))
+            .collect();
         for (nonce, tx, block) in watched {
             if current > block + REORG_WATCH_BLOCKS {
                 self.watching.remove(&nonce);
@@ -282,11 +303,19 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
         }
 
         // 3. Act on the plan.
-        for action in self.book.plan(current, self.cfg.replace_after_blocks, &dropped) {
+        for action in self
+            .book
+            .plan(current, self.cfg.replace_after_blocks, &dropped)
+        {
             match action {
                 Action::Wait => {}
-                Action::Replace { nonce, max_fee_per_gas, max_priority_fee_per_gas } => {
-                    self.resend(nonce, max_fee_per_gas, max_priority_fee_per_gas, current).await?;
+                Action::Replace {
+                    nonce,
+                    max_fee_per_gas,
+                    max_priority_fee_per_gas,
+                } => {
+                    self.resend(nonce, max_fee_per_gas, max_priority_fee_per_gas, current)
+                        .await?;
                 }
                 Action::GapFill { nonce } => {
                     self.recover_dropped(nonce, current).await?;
@@ -299,7 +328,9 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
     /// A dropped transaction is resent when it is still needed, and filled with a self-transfer
     /// when it is not. Either way, no nonce is left as a hole (RS-15).
     async fn recover_dropped(&mut self, nonce: u64, current: u64) -> anyhow::Result<()> {
-        let Some(tx) = self.book.get(nonce).cloned() else { return Ok(()) };
+        let Some(tx) = self.book.get(nonce).cloned() else {
+            return Ok(());
+        };
         let still_needed = match &tx.purpose {
             TxPurpose::Liquidate { borrower, .. } => {
                 let hf = self.chain.health_factor(*borrower).await?;
@@ -312,14 +343,25 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
             TxPurpose::GapFill => false,
         };
         if still_needed && !matches!(tx.purpose, TxPurpose::GapFill) {
-            tracing::warn!(nonce, "dropped transaction still needed, resending with the same nonce");
+            tracing::warn!(
+                nonce,
+                "dropped transaction still needed, resending with the same nonce"
+            );
             let fee = tx.max_fee_per_gas;
             let prio = tx.max_priority_fee_per_gas;
             let req = self.build_request(nonce, &tx.purpose, fee, prio)?;
             let hash = self.chain.send(&req).await?;
-            self.track(InFlight { hash: Some(hash), sent_block: current, ..tx }).await?;
+            self.track(InFlight {
+                hash: Some(hash),
+                sent_block: current,
+                ..tx
+            })
+            .await?;
         } else {
-            tracing::warn!(nonce, "dropped transaction no longer needed, filling the nonce");
+            tracing::warn!(
+                nonce,
+                "dropped transaction no longer needed, filling the nonce"
+            );
             let fee = tx.max_fee_per_gas;
             let prio = tx.max_priority_fee_per_gas;
             let req = TxRequest {
@@ -341,13 +383,22 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
                 purpose: TxPurpose::GapFill,
                 trace_id: tx.trace_id,
                 replacements: 0,
-            }).await?;
+            })
+            .await?;
         }
         Ok(())
     }
 
-    async fn resend(&mut self, nonce: u64, max_fee: u128, prio: u128, current: u64) -> anyhow::Result<()> {
-        let Some(tx) = self.book.get(nonce).cloned() else { return Ok(()) };
+    async fn resend(
+        &mut self,
+        nonce: u64,
+        max_fee: u128,
+        prio: u128,
+        current: u64,
+    ) -> anyhow::Result<()> {
+        let Some(tx) = self.book.get(nonce).cloned() else {
+            return Ok(());
+        };
         tracing::info!(trace_id = %tx.trace_id, nonce, max_fee, "replacing unconfirmed transaction with a fee bump");
         let req = match &tx.purpose {
             TxPurpose::GapFill => TxRequest {
@@ -367,7 +418,11 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
         Ok(())
     }
 
-    async fn send_start_auction(&mut self, borrower: Address, trace_id: &str) -> anyhow::Result<(u64, B256)> {
+    async fn send_start_auction(
+        &mut self,
+        borrower: Address,
+        trace_id: &str,
+    ) -> anyhow::Result<(u64, B256)> {
         let gas = self.chain.gas_price().await?;
         let (fee, prio) = (gas * 2, gas / 10 + 1);
         let nonce = self.book.reserve();
@@ -384,7 +439,8 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
             purpose,
             trace_id: trace_id.to_string(),
             replacements: 0,
-        }).await?;
+        })
+        .await?;
         Ok((nonce, hash))
     }
 
@@ -415,16 +471,29 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
             purpose,
             trace_id: signal.trace_id.clone(),
             replacements: 0,
-        }).await?;
+        })
+        .await?;
         Ok((nonce, hash))
     }
 
-    fn build_request(&self, nonce: u64, purpose: &TxPurpose, fee: u128, prio: u128) -> anyhow::Result<TxRequest> {
+    fn build_request(
+        &self,
+        nonce: u64,
+        purpose: &TxPurpose,
+        fee: u128,
+        prio: u128,
+    ) -> anyhow::Result<TxRequest> {
         let data = match purpose {
-            TxPurpose::StartAuction { borrower } => {
-                ILendingPool::startAuctionCall { borrower: *borrower }.abi_encode()
+            TxPurpose::StartAuction { borrower } => ILendingPool::startAuctionCall {
+                borrower: *borrower,
             }
-            TxPurpose::Liquidate { intent, signature, repay, .. } => ILendingPool::liquidateCall {
+            .abi_encode(),
+            TxPurpose::Liquidate {
+                intent,
+                signature,
+                repay,
+                ..
+            } => ILendingPool::liquidateCall {
                 intent: (**intent).clone(),
                 signature: signature.clone().into(),
                 repayAmount: *repay,
@@ -446,7 +515,9 @@ impl<C: TxChain, I: IntentStore> Executor<C, I> {
 
 fn purpose_borrower(p: &TxPurpose) -> Option<Address> {
     match p {
-        TxPurpose::StartAuction { borrower } | TxPurpose::Liquidate { borrower, .. } => Some(*borrower),
+        TxPurpose::StartAuction { borrower } | TxPurpose::Liquidate { borrower, .. } => {
+            Some(*borrower)
+        }
         TxPurpose::GapFill => None,
     }
 }
@@ -511,7 +582,13 @@ mod tests {
             Ok(h)
         }
         async fn status(&self, hash: B256) -> anyhow::Result<TxStatus> {
-            Ok(self.statuses.lock().unwrap().get(&hash).copied().unwrap_or(TxStatus::Unknown))
+            Ok(self
+                .statuses
+                .lock()
+                .unwrap()
+                .get(&hash)
+                .copied()
+                .unwrap_or(TxStatus::Unknown))
         }
         async fn health_factor(&self, _b: Address) -> anyhow::Result<U256> {
             Ok(*self.hf.lock().unwrap())
@@ -572,7 +649,12 @@ mod tests {
     }
 
     fn exec(chain: FakeChain, intent: Option<StoredIntent>) -> Executor<FakeChain, FixedIntents> {
-        Executor::new(chain, FixedIntents(intent.into_iter().collect()), Box::new(ImmediateStrike), cfg())
+        Executor::new(
+            chain,
+            FixedIntents(intent.into_iter().collect()),
+            Box::new(ImmediateStrike),
+            cfg(),
+        )
     }
 
     fn unhealthy(chain: &FakeChain, block: u64) {
@@ -586,7 +668,10 @@ mod tests {
         let chain = FakeChain::default();
         unhealthy(&chain, 20);
         let mut e = exec(chain, Some(stored()));
-        assert_eq!(e.handle_signal(&signal(10)).await.unwrap(), Outcome::Skipped("stale signal"));
+        assert_eq!(
+            e.handle_signal(&signal(10)).await.unwrap(),
+            Outcome::Skipped("stale signal")
+        );
         assert!(e.chain.sent.lock().unwrap().is_empty());
     }
 
@@ -596,7 +681,10 @@ mod tests {
         unhealthy(&chain, 10);
         *chain.hf.lock().unwrap() = U256::from(2u64) * U256::from(10u64).pow(U256::from(18u64));
         let mut e = exec(chain, Some(stored()));
-        assert_eq!(e.handle_signal(&signal(10)).await.unwrap(), Outcome::Skipped("healthy on chain"));
+        assert_eq!(
+            e.handle_signal(&signal(10)).await.unwrap(),
+            Outcome::Skipped("healthy on chain")
+        );
     }
 
     #[tokio::test]
@@ -604,7 +692,10 @@ mod tests {
         let chain = FakeChain::default();
         unhealthy(&chain, 10);
         let mut e = exec(chain, None);
-        assert_eq!(e.handle_signal(&signal(10)).await.unwrap(), Outcome::Skipped("no signed intent"));
+        assert_eq!(
+            e.handle_signal(&signal(10)).await.unwrap(),
+            Outcome::Skipped("no signed intent")
+        );
     }
 
     #[tokio::test]
@@ -614,7 +705,10 @@ mod tests {
         let mut s = stored();
         s.intent.deadline = U256::from(999u64);
         let mut e = exec(chain, Some(s));
-        assert_eq!(e.handle_signal(&signal(10)).await.unwrap(), Outcome::Skipped("intent expired"));
+        assert_eq!(
+            e.handle_signal(&signal(10)).await.unwrap(),
+            Outcome::Skipped("intent expired")
+        );
     }
 
     #[tokio::test]
@@ -623,7 +717,10 @@ mod tests {
         unhealthy(&chain, 10);
         *chain.used.lock().unwrap() = vec![U256::from(1u64)];
         let mut e = exec(chain, Some(stored()));
-        assert_eq!(e.handle_signal(&signal(10)).await.unwrap(), Outcome::Skipped("intent already used"));
+        assert_eq!(
+            e.handle_signal(&signal(10)).await.unwrap(),
+            Outcome::Skipped("intent already used")
+        );
         assert!(e.chain.sent.lock().unwrap().is_empty());
     }
 
@@ -636,7 +733,12 @@ mod tests {
         *chain.bonus.lock().unwrap() = 500;
         let mut second = stored();
         second.intent.nonce = U256::from(2u64);
-        let mut e = Executor::new(chain, FixedIntents(vec![stored(), second]), Box::new(ImmediateStrike), cfg());
+        let mut e = Executor::new(
+            chain,
+            FixedIntents(vec![stored(), second]),
+            Box::new(ImmediateStrike),
+            cfg(),
+        );
         let outcome = e.handle_signal(&signal(10)).await.unwrap();
         assert!(matches!(outcome, Outcome::Struck { .. }), "got {outcome:?}");
         assert_eq!(e.chain.sent.lock().unwrap().len(), 1);
@@ -649,16 +751,25 @@ mod tests {
         let mut e = exec(chain, Some(stored()));
 
         let first = e.handle_signal(&signal(10)).await.unwrap();
-        let Outcome::StartedAuction { nonce: 0, hash } = first else { panic!("got {first:?}") };
+        let Outcome::StartedAuction { nonce: 0, hash } = first else {
+            panic!("got {first:?}")
+        };
 
         // The auction transaction confirms before the next signal is handled.
-        e.chain.statuses.lock().unwrap().insert(hash, TxStatus::Confirmed { block: 10 });
+        e.chain
+            .statuses
+            .lock()
+            .unwrap()
+            .insert(hash, TxStatus::Confirmed { block: 10 });
         e.tick().await.unwrap();
 
         *e.chain.auction.lock().unwrap() = 10;
         *e.chain.bonus.lock().unwrap() = 500;
         let second = e.handle_signal(&signal(10)).await.unwrap();
-        assert!(matches!(second, Outcome::Struck { nonce: 1, .. }), "got {second:?}");
+        assert!(
+            matches!(second, Outcome::Struck { nonce: 1, .. }),
+            "got {second:?}"
+        );
     }
 
     #[tokio::test]
@@ -670,19 +781,34 @@ mod tests {
         let mut e = exec(chain, Some(stored()));
 
         let first = e.handle_signal(&signal(10)).await.unwrap();
-        let Outcome::Struck { nonce: 0, hash, .. } = first else { panic!("got {first:?}") };
-        e.chain.statuses.lock().unwrap().insert(hash, TxStatus::Reverted { block: 10 });
+        let Outcome::Struck { nonce: 0, hash, .. } = first else {
+            panic!("got {first:?}")
+        };
+        e.chain
+            .statuses
+            .lock()
+            .unwrap()
+            .insert(hash, TxStatus::Reverted { block: 10 });
         e.tick().await.unwrap();
 
         // Inside the cooldown: nothing is sent, even as health keeps moving.
-        let during = e.handle_signal(&signal(10 + REVERT_COOLDOWN_BLOCKS - 1)).await.unwrap();
+        let during = e
+            .handle_signal(&signal(10 + REVERT_COOLDOWN_BLOCKS - 1))
+            .await
+            .unwrap();
         assert_eq!(during, Outcome::Skipped("liquidation reverted recently"));
         assert_eq!(e.chain.sent.lock().unwrap().len(), 1);
 
         // Cooldown over: the borrower is eligible again.
         *e.chain.block.lock().unwrap() = 10 + REVERT_COOLDOWN_BLOCKS;
-        let retry = e.handle_signal(&signal(10 + REVERT_COOLDOWN_BLOCKS)).await.unwrap();
-        assert!(matches!(retry, Outcome::Struck { nonce: 1, .. }), "got {retry:?}");
+        let retry = e
+            .handle_signal(&signal(10 + REVERT_COOLDOWN_BLOCKS))
+            .await
+            .unwrap();
+        assert!(
+            matches!(retry, Outcome::Struck { nonce: 1, .. }),
+            "got {retry:?}"
+        );
     }
 
     #[tokio::test]
@@ -697,7 +823,10 @@ mod tests {
             Box::new(WaitForMargin { margin_bps: 12_000 }),
             cfg(),
         );
-        assert_eq!(e.handle_signal(&signal(10)).await.unwrap(), Outcome::Waiting);
+        assert_eq!(
+            e.handle_signal(&signal(10)).await.unwrap(),
+            Outcome::Waiting
+        );
         assert!(e.chain.sent.lock().unwrap().is_empty());
     }
 
@@ -717,7 +846,10 @@ mod tests {
         let sent = e.chain.sent.lock().unwrap();
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[1].nonce, sent[0].nonce, "replacement reuses the nonce");
-        assert!(sent[1].max_fee_per_gas * 8 >= original_fee * 9, "fee rose by at least 12.5%");
+        assert!(
+            sent[1].max_fee_per_gas * 8 >= original_fee * 9,
+            "fee rose by at least 12.5%"
+        );
     }
 
     #[tokio::test]
@@ -737,7 +869,10 @@ mod tests {
         let sent = e.chain.sent.lock().unwrap();
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[1].nonce, sent[0].nonce);
-        assert_eq!(sent[1].to, POOL, "a resend is the original call, not a self-transfer");
+        assert_eq!(
+            sent[1].to, POOL,
+            "a resend is the original call, not a self-transfer"
+        );
         assert!(!sent[1].data.is_empty());
     }
 
@@ -759,7 +894,10 @@ mod tests {
         let sent = e.chain.sent.lock().unwrap();
         let last = sent.last().unwrap();
         assert_eq!(last.nonce, sent[0].nonce, "the hole is filled, not skipped");
-        assert_eq!(last.to, LIQUIDATOR, "gap fill is a zero-value self-transfer");
+        assert_eq!(
+            last.to, LIQUIDATOR,
+            "gap fill is a zero-value self-transfer"
+        );
         assert!(last.data.is_empty());
     }
 
@@ -768,9 +906,15 @@ mod tests {
         let chain = FakeChain::default();
         unhealthy(&chain, 10);
         let mut e = exec(chain, Some(stored()));
-        assert!(matches!(e.handle_signal(&signal(10)).await.unwrap(), Outcome::StartedAuction { .. }));
+        assert!(matches!(
+            e.handle_signal(&signal(10)).await.unwrap(),
+            Outcome::StartedAuction { .. }
+        ));
         // The same signal arrives again before the auction transaction confirms.
-        assert_eq!(e.handle_signal(&signal(10)).await.unwrap(), Outcome::Skipped("already in flight"));
+        assert_eq!(
+            e.handle_signal(&signal(10)).await.unwrap(),
+            Outcome::Skipped("already in flight")
+        );
         assert_eq!(e.chain.sent.lock().unwrap().len(), 1);
     }
 

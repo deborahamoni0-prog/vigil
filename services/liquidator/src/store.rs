@@ -36,9 +36,13 @@ impl IntentStore for PgIntentStore {
                 Ok(StoredIntent {
                     intent: LiquidationIntent {
                         borrower,
-                        collateralAsset: Address::from_str(&row.try_get::<String, _>("collateral_asset")?)?,
+                        collateralAsset: Address::from_str(
+                            &row.try_get::<String, _>("collateral_asset")?,
+                        )?,
                         maxRepay: U256::from_str(&row.try_get::<String, _>("max_repay")?)?,
-                        minCollateralOut: U256::from_str(&row.try_get::<String, _>("min_collateral_out")?)?,
+                        minCollateralOut: U256::from_str(
+                            &row.try_get::<String, _>("min_collateral_out")?,
+                        )?,
                         nonce: U256::from_str(&row.try_get::<String, _>("nonce")?)?,
                         deadline: U256::from(row.try_get::<i64, _>("deadline")? as u64),
                     },
@@ -65,7 +69,8 @@ impl PgTxLog {
 impl crate::executor::TxLog for PgTxLog {
     async fn sent(&self, tx: &crate::nonce::InFlight, kind: &str) -> anyhow::Result<()> {
         let borrower = match &tx.purpose {
-            crate::nonce::TxPurpose::StartAuction { borrower } | crate::nonce::TxPurpose::Liquidate { borrower, .. } => {
+            crate::nonce::TxPurpose::StartAuction { borrower }
+            | crate::nonce::TxPurpose::Liquidate { borrower, .. } => {
                 format!("{borrower:#x}")
             }
             crate::nonce::TxPurpose::GapFill => String::new(),
@@ -99,9 +104,11 @@ impl crate::executor::TxLog for PgTxLog {
     }
 
     async fn pending(&self) -> anyhow::Result<Vec<(u64, alloy::primitives::B256)>> {
-        let rows = sqlx::query("SELECT nonce, tx_hash FROM liquidator_txs WHERE status = 'pending' AND tx_hash <> ''")
-            .fetch_all(&self.pool)
-            .await?;
+        let rows = sqlx::query(
+            "SELECT nonce, tx_hash FROM liquidator_txs WHERE status = 'pending' AND tx_hash <> ''",
+        )
+        .fetch_all(&self.pool)
+        .await?;
         let mut out = Vec::with_capacity(rows.len());
         for row in rows {
             let nonce: i64 = sqlx::Row::get(&row, "nonce");

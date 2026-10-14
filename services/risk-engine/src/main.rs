@@ -10,7 +10,8 @@ use sqlx::postgres::PgPoolOptions;
 use tokio::sync::Mutex;
 use vigil_common::config::Deployment;
 use vigil_common::messages::{
-    BlockMessage, EventMessage, LiquidationSignal, STREAM_NAME, SUBJECT_BLOCKS, SUBJECT_EVENTS, SUBJECT_SIGNALS,
+    BlockMessage, EventMessage, LiquidationSignal, STREAM_NAME, SUBJECT_BLOCKS, SUBJECT_EVENTS,
+    SUBJECT_SIGNALS,
 };
 use vigil_risk_engine::api::{self, ApiState};
 use vigil_risk_engine::engine::RiskEngine;
@@ -35,11 +36,17 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let deployment = Deployment::load(&args.deployment_file)?;
 
-    let pool = PgPoolOptions::new().max_connections(10).connect(&args.database_url).await?;
+    let pool = PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&args.database_url)
+        .await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
 
     let state = Arc::new(ApiState {
-        engine: Mutex::new(RiskEngine::new(PgRiskStore::new(pool), deployment.pool_params())),
+        engine: Mutex::new(RiskEngine::new(
+            PgRiskStore::new(pool),
+            deployment.pool_params(),
+        )),
     });
 
     let addr = SocketAddr::from_str(&args.http_addr)?;
@@ -102,10 +109,15 @@ async fn main() -> anyhow::Result<()> {
         .await;
 
         match outcome {
-            Ok(()) => msg.ack().await.map_err(|e| anyhow::anyhow!("ack failed: {e}"))?,
+            Ok(()) => msg
+                .ack()
+                .await
+                .map_err(|e| anyhow::anyhow!("ack failed: {e}"))?,
             // Leave it unacked. JetStream redelivers after the ack wait, and the idempotency keys
             // stop a double-apply.
-            Err(e) => tracing::error!(error = %e, subject, "message not applied, will be redelivered"),
+            Err(e) => {
+                tracing::error!(error = %e, subject, "message not applied, will be redelivered")
+            }
         }
     }
     Ok(())
@@ -113,11 +125,18 @@ async fn main() -> anyhow::Result<()> {
 
 async fn publish_signal(js: &jetstream::Context, s: &LiquidationSignal) -> anyhow::Result<()> {
     let mut headers = HeaderMap::new();
-    headers.insert("Nats-Msg-Id", format!("signal:{:#x}:{}", s.borrower, s.block_number).as_str());
+    headers.insert(
+        "Nats-Msg-Id",
+        format!("signal:{:#x}:{}", s.borrower, s.block_number).as_str(),
+    );
     headers.insert("trace-id", s.trace_id.as_str());
-    js.publish_with_headers(vigil_common::messages::signal_subject(s.borrower), headers, serde_json::to_vec(s)?.into())
-        .await?
-        .await?;
+    js.publish_with_headers(
+        vigil_common::messages::signal_subject(s.borrower),
+        headers,
+        serde_json::to_vec(s)?.into(),
+    )
+    .await?
+    .await?;
     tracing::info!(borrower = %s.borrower, block = s.block_number, trace_id = %s.trace_id, "liquidation signal");
     Ok(())
 }

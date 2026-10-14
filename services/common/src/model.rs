@@ -69,7 +69,11 @@ pub struct Quote {
 }
 
 /// Mirrors `LendingPool._previewIndexes`. Returns (supply index, debt index).
-pub fn preview_indexes(state: &PoolState, params: &PoolParams, now: u64) -> Result<(U256, U256), MathError> {
+pub fn preview_indexes(
+    state: &PoolState,
+    params: &PoolParams,
+    now: u64,
+) -> Result<(U256, U256), MathError> {
     let dt = now.saturating_sub(state.last_accrual);
     if dt == 0 {
         return Ok((state.supply_index, state.debt_index));
@@ -79,7 +83,10 @@ pub fn preview_indexes(state: &PoolState, params: &PoolParams, now: u64) -> Resu
     let util = math::utilization(debt_value, supply_value)?;
     let rate = math::rate_per_second(math::annual_borrow_rate(&params.rates, util)?)?;
 
-    let new_debt_index = math::ray_mul_up(state.debt_index, math::compound_factor(rate, U256::from(dt))?)?;
+    let new_debt_index = math::ray_mul_up(
+        state.debt_index,
+        math::compound_factor(rate, U256::from(dt))?,
+    )?;
     let new_debt_value = math::ray_mul_up(state.total_debt_scaled, new_debt_index)?;
     let interest = new_debt_value - debt_value;
     let reserve_cut = math::ray_mul_down(interest, params.reserve_factor)?;
@@ -93,7 +100,11 @@ pub fn preview_indexes(state: &PoolState, params: &PoolParams, now: u64) -> Resu
 }
 
 /// Mirrors `LendingPool._healthFactorPx`. Returns WAD, or `HF_NO_DEBT` when there is no debt.
-pub fn health_factor(position: &Position, params: &PoolParams, quote: &Quote) -> Result<U256, MathError> {
+pub fn health_factor(
+    position: &Position,
+    params: &PoolParams,
+    quote: &Quote,
+) -> Result<U256, MathError> {
     if position.debt_scaled.is_zero() {
         return Ok(HF_NO_DEBT);
     }
@@ -112,7 +123,9 @@ pub fn health_factor(position: &Position, params: &PoolParams, quote: &Quote) ->
         if amount.is_zero() {
             continue;
         }
-        let Some(c) = params.collateral_by_bit(bit as u8) else { continue };
+        let Some(c) = params.collateral_by_bit(bit as u8) else {
+            continue;
+        };
         let value_wad = math::wad_mul_down(
             math::to_wad_down(amount, c.decimals),
             quote.collateral_prices[bit],
@@ -130,4 +143,3 @@ pub fn debt_units(position: &Position, debt_index: U256) -> Result<U256, MathErr
 pub fn is_liquidatable(hf: U256) -> bool {
     hf < WAD
 }
-

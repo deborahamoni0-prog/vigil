@@ -31,46 +31,95 @@ impl RpcChain {
         debt_asset: Address,
         collateral_by_bit: [Option<Address>; MAX_COLLATERAL],
     ) -> Self {
-        Self { provider, pool, oracle, debt_asset, collateral_by_bit }
+        Self {
+            provider,
+            pool,
+            oracle,
+            debt_asset,
+            collateral_by_bit,
+        }
     }
 }
 
 fn decode(topics_and_data: &alloy::primitives::Log) -> Option<PoolEvent> {
     let sig = *topics_and_data.topics().first()?;
-    Some(if sig == ILendingPool::CollateralDeposited::SIGNATURE_HASH {
-        let e = ILendingPool::CollateralDeposited::decode_log(topics_and_data).ok()?.data;
-        PoolEvent::CollateralDeposited { user: e.user, asset: e.asset, amount: e.amount }
-    } else if sig == ILendingPool::CollateralWithdrawn::SIGNATURE_HASH {
-        let e = ILendingPool::CollateralWithdrawn::decode_log(topics_and_data).ok()?.data;
-        PoolEvent::CollateralWithdrawn { user: e.user, asset: e.asset, amount: e.amount }
-    } else if sig == ILendingPool::CollateralEnabled::SIGNATURE_HASH {
-        let e = ILendingPool::CollateralEnabled::decode_log(topics_and_data).ok()?.data;
-        PoolEvent::CollateralEnabled { user: e.user, asset: e.asset }
-    } else if sig == ILendingPool::CollateralDisabled::SIGNATURE_HASH {
-        let e = ILendingPool::CollateralDisabled::decode_log(topics_and_data).ok()?.data;
-        PoolEvent::CollateralDisabled { user: e.user, asset: e.asset }
-    } else if sig == ILendingPool::Borrowed::SIGNATURE_HASH {
-        let e = ILendingPool::Borrowed::decode_log(topics_and_data).ok()?.data;
-        PoolEvent::Borrowed { user: e.user, amount: e.amount, scaled: e.scaled }
-    } else if sig == ILendingPool::Repaid::SIGNATURE_HASH {
-        let e = ILendingPool::Repaid::decode_log(topics_and_data).ok()?.data;
-        PoolEvent::Repaid { user: e.user, amount: e.amount, scaled: e.scaled }
-    } else if sig == ILendingPool::Liquidated::SIGNATURE_HASH {
-        let e = ILendingPool::Liquidated::decode_log(topics_and_data).ok()?.data;
-        PoolEvent::Liquidated {
-            borrower: e.borrower,
-            liquidator: e.liquidator,
-            asset: e.collateralAsset,
-            repaid: e.repaid,
-            scaled_repaid: e.scaledRepaid,
-            seized: e.seized,
-        }
-    } else if sig == ILendingPool::BadDebtWrittenOff::SIGNATURE_HASH {
-        let e = ILendingPool::BadDebtWrittenOff::decode_log(topics_and_data).ok()?.data;
-        PoolEvent::BadDebt { borrower: e.borrower, scaled_debt: e.scaledDebt }
-    } else {
-        PoolEvent::Other { name: format!("{sig:#x}") }
-    })
+    Some(
+        if sig == ILendingPool::CollateralDeposited::SIGNATURE_HASH {
+            let e = ILendingPool::CollateralDeposited::decode_log(topics_and_data)
+                .ok()?
+                .data;
+            PoolEvent::CollateralDeposited {
+                user: e.user,
+                asset: e.asset,
+                amount: e.amount,
+            }
+        } else if sig == ILendingPool::CollateralWithdrawn::SIGNATURE_HASH {
+            let e = ILendingPool::CollateralWithdrawn::decode_log(topics_and_data)
+                .ok()?
+                .data;
+            PoolEvent::CollateralWithdrawn {
+                user: e.user,
+                asset: e.asset,
+                amount: e.amount,
+            }
+        } else if sig == ILendingPool::CollateralEnabled::SIGNATURE_HASH {
+            let e = ILendingPool::CollateralEnabled::decode_log(topics_and_data)
+                .ok()?
+                .data;
+            PoolEvent::CollateralEnabled {
+                user: e.user,
+                asset: e.asset,
+            }
+        } else if sig == ILendingPool::CollateralDisabled::SIGNATURE_HASH {
+            let e = ILendingPool::CollateralDisabled::decode_log(topics_and_data)
+                .ok()?
+                .data;
+            PoolEvent::CollateralDisabled {
+                user: e.user,
+                asset: e.asset,
+            }
+        } else if sig == ILendingPool::Borrowed::SIGNATURE_HASH {
+            let e = ILendingPool::Borrowed::decode_log(topics_and_data)
+                .ok()?
+                .data;
+            PoolEvent::Borrowed {
+                user: e.user,
+                amount: e.amount,
+                scaled: e.scaled,
+            }
+        } else if sig == ILendingPool::Repaid::SIGNATURE_HASH {
+            let e = ILendingPool::Repaid::decode_log(topics_and_data).ok()?.data;
+            PoolEvent::Repaid {
+                user: e.user,
+                amount: e.amount,
+                scaled: e.scaled,
+            }
+        } else if sig == ILendingPool::Liquidated::SIGNATURE_HASH {
+            let e = ILendingPool::Liquidated::decode_log(topics_and_data)
+                .ok()?
+                .data;
+            PoolEvent::Liquidated {
+                borrower: e.borrower,
+                liquidator: e.liquidator,
+                asset: e.collateralAsset,
+                repaid: e.repaid,
+                scaled_repaid: e.scaledRepaid,
+                seized: e.seized,
+            }
+        } else if sig == ILendingPool::BadDebtWrittenOff::SIGNATURE_HASH {
+            let e = ILendingPool::BadDebtWrittenOff::decode_log(topics_and_data)
+                .ok()?
+                .data;
+            PoolEvent::BadDebt {
+                borrower: e.borrower,
+                scaled_debt: e.scaledDebt,
+            }
+        } else {
+            PoolEvent::Other {
+                name: format!("{sig:#x}"),
+            }
+        },
+    )
 }
 
 #[async_trait]
@@ -82,7 +131,11 @@ impl ChainReader for RpcChain {
     async fn block_by_number(&self, number: u64) -> anyhow::Result<Option<BlockInfo>> {
         let block = self.provider.get_block_by_number(number.into()).await?;
         Ok(block.map(|b| BlockInfo {
-            block: BlockRef { number, hash: b.header.hash, parent: b.header.parent_hash },
+            block: BlockRef {
+                number,
+                hash: b.header.hash,
+                parent: b.header.parent_hash,
+            },
             timestamp: b.header.timestamp,
         }))
     }
@@ -92,8 +145,12 @@ impl ChainReader for RpcChain {
         let logs = self.provider.get_logs(&filter).await?;
         let mut out = Vec::with_capacity(logs.len());
         for log in logs {
-            let Some(log_index) = log.log_index else { anyhow::bail!("log without index in block {hash:#x}") };
-            let Some(event) = decode(&log.inner) else { continue };
+            let Some(log_index) = log.log_index else {
+                anyhow::bail!("log without index in block {hash:#x}")
+            };
+            let Some(event) = decode(&log.inner) else {
+                continue;
+            };
             out.push(DecodedLog { log_index, event });
         }
         Ok(out)
@@ -135,7 +192,11 @@ impl ChainReader for RpcChain {
                 debt_index: stored.debtIndex,
                 last_accrual: last_accrual,
             },
-            quote: Quote { debt_index: projected.debtIndex, debt_price, collateral_prices },
+            quote: Quote {
+                debt_index: projected.debtIndex,
+                debt_price,
+                collateral_prices,
+            },
             trace_id: format!("block:{:#x}", info.block.hash),
         })
     }

@@ -4,8 +4,10 @@
 
 use alloy::primitives::{Address, B256, U256};
 use async_trait::async_trait;
-use vigil_common::messages::{BlockMessage, EventMessage, LiquidationSignal, MessageKind, PoolEvent};
-use vigil_common::model::{self, Position, PoolParams, HF_NO_DEBT, MAX_COLLATERAL};
+use vigil_common::messages::{
+    BlockMessage, EventMessage, LiquidationSignal, MessageKind, PoolEvent,
+};
+use vigil_common::model::{self, PoolParams, Position, HF_NO_DEBT, MAX_COLLATERAL};
 
 pub type EventKey = (B256, u64);
 
@@ -44,7 +46,9 @@ pub fn borrower_of(event: &PoolEvent) -> Option<Address> {
         | PoolEvent::CollateralDisabled { user, .. }
         | PoolEvent::Borrowed { user, .. }
         | PoolEvent::Repaid { user, .. } => Some(*user),
-        PoolEvent::Liquidated { borrower, .. } | PoolEvent::BadDebt { borrower, .. } => Some(*borrower),
+        PoolEvent::Liquidated { borrower, .. } | PoolEvent::BadDebt { borrower, .. } => {
+            Some(*borrower)
+        }
         PoolEvent::Other { .. } => None,
     }
 }
@@ -57,7 +61,11 @@ fn bit_of(params: &PoolParams, asset: Address) -> Result<usize, EngineError> {
 }
 
 /// Applies one event to a position. Mirrors the state changes in `LendingPool`.
-pub fn apply_to_position(pos: &mut Position, event: &PoolEvent, params: &PoolParams) -> Result<(), EngineError> {
+pub fn apply_to_position(
+    pos: &mut Position,
+    event: &PoolEvent,
+    params: &PoolParams,
+) -> Result<(), EngineError> {
     match event {
         PoolEvent::CollateralDeposited { asset, amount, .. } => {
             let bit = bit_of(params, *asset)?;
@@ -66,7 +74,9 @@ pub fn apply_to_position(pos: &mut Position, event: &PoolEvent, params: &PoolPar
         }
         PoolEvent::CollateralWithdrawn { asset, amount, .. } => {
             let bit = bit_of(params, *asset)?;
-            pos.amounts[bit] = pos.amounts[bit].checked_sub(*amount).ok_or(EngineError::Underflow("collateral"))?;
+            pos.amounts[bit] = pos.amounts[bit]
+                .checked_sub(*amount)
+                .ok_or(EngineError::Underflow("collateral"))?;
             // The contract clears the bit only when the whole balance leaves.
             if pos.amounts[bit].is_zero() {
                 pos.bitmap &= !(1 << bit);
@@ -82,18 +92,34 @@ pub fn apply_to_position(pos: &mut Position, event: &PoolEvent, params: &PoolPar
             pos.debt_scaled += *scaled;
         }
         PoolEvent::Repaid { scaled, .. } => {
-            pos.debt_scaled = pos.debt_scaled.checked_sub(*scaled).ok_or(EngineError::Underflow("debt"))?;
+            pos.debt_scaled = pos
+                .debt_scaled
+                .checked_sub(*scaled)
+                .ok_or(EngineError::Underflow("debt"))?;
         }
-        PoolEvent::Liquidated { asset, seized, scaled_repaid, .. } => {
-            pos.debt_scaled = pos.debt_scaled.checked_sub(*scaled_repaid).ok_or(EngineError::Underflow("debt"))?;
+        PoolEvent::Liquidated {
+            asset,
+            seized,
+            scaled_repaid,
+            ..
+        } => {
+            pos.debt_scaled = pos
+                .debt_scaled
+                .checked_sub(*scaled_repaid)
+                .ok_or(EngineError::Underflow("debt"))?;
             let bit = bit_of(params, *asset)?;
-            pos.amounts[bit] = pos.amounts[bit].checked_sub(*seized).ok_or(EngineError::Underflow("collateral"))?;
+            pos.amounts[bit] = pos.amounts[bit]
+                .checked_sub(*seized)
+                .ok_or(EngineError::Underflow("collateral"))?;
             if pos.amounts[bit].is_zero() {
                 pos.bitmap &= !(1 << bit);
             }
         }
         PoolEvent::BadDebt { scaled_debt, .. } => {
-            pos.debt_scaled = pos.debt_scaled.checked_sub(*scaled_debt).ok_or(EngineError::Underflow("debt"))?;
+            pos.debt_scaled = pos
+                .debt_scaled
+                .checked_sub(*scaled_debt)
+                .ok_or(EngineError::Underflow("debt"))?;
         }
         PoolEvent::Other { .. } => {}
     }
@@ -109,7 +135,11 @@ pub struct RiskEngine<S> {
 
 impl<S: RiskStore> RiskEngine<S> {
     pub fn new(store: S, params: PoolParams) -> Self {
-        Self { store, params, last_block: None }
+        Self {
+            store,
+            params,
+            last_block: None,
+        }
     }
 
     pub fn last_block(&self) -> Option<&BlockMessage> {
@@ -122,18 +152,25 @@ impl<S: RiskStore> RiskEngine<S> {
         match msg.kind {
             MessageKind::Retract => self.store.undo(key).await,
             MessageKind::Log => {
-                let Some(borrower) = borrower_of(&msg.event) else { return Ok(false) };
+                let Some(borrower) = borrower_of(&msg.event) else {
+                    return Ok(false);
+                };
                 let before = self.store.load_position(borrower).await?;
                 let mut after = before;
                 apply_to_position(&mut after, &msg.event, &self.params)?;
-                self.store.commit_applied(key, borrower, before, after).await
+                self.store
+                    .commit_applied(key, borrower, before, after)
+                    .await
             }
         }
     }
 
     /// Records the block's quote and returns signals for unhealthy positions (RS-08, RS-09).
     /// While the oracle is Frozen the engine stays silent.
-    pub async fn handle_block(&mut self, block: BlockMessage) -> anyhow::Result<Vec<LiquidationSignal>> {
+    pub async fn handle_block(
+        &mut self,
+        block: BlockMessage,
+    ) -> anyhow::Result<Vec<LiquidationSignal>> {
         let mut signals = Vec::new();
         if !block.frozen {
             for (borrower, position) in self.store.all_with_debt().await? {
@@ -155,7 +192,9 @@ impl<S: RiskStore> RiskEngine<S> {
 
     /// Health factor now, from the last block the engine saw. `None` before the first block.
     pub async fn health_factor_of(&self, borrower: Address) -> anyhow::Result<Option<(U256, u64)>> {
-        let Some(block) = &self.last_block else { return Ok(None) };
+        let Some(block) = &self.last_block else {
+            return Ok(None);
+        };
         let position = self.store.load_position(borrower).await?;
         let hf = model::health_factor(&position, &self.params, &block.quote)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -170,8 +209,8 @@ mod tests {
 
     use alloy::primitives::address;
     use vigil_common::math::RateParams;
-    use vigil_common::messages::{trace_id_for, BlockMessage};
     use vigil_common::math::{RAY, WAD};
+    use vigil_common::messages::{trace_id_for, BlockMessage};
     use vigil_common::model::{CollateralParams, PoolState, Quote};
 
     use super::*;
@@ -194,8 +233,20 @@ mod tests {
                 optimal_util: U256::from(1),
             },
             collaterals: vec![
-                CollateralParams { asset: FEE, bit_index: 0, decimals: 18, liq_threshold_bps: 8000, liq_bonus_bps: 500 },
-                CollateralParams { asset: SIX, bit_index: 1, decimals: 6, liq_threshold_bps: 8500, liq_bonus_bps: 500 },
+                CollateralParams {
+                    asset: FEE,
+                    bit_index: 0,
+                    decimals: 18,
+                    liq_threshold_bps: 8000,
+                    liq_bonus_bps: 500,
+                },
+                CollateralParams {
+                    asset: SIX,
+                    bit_index: 1,
+                    decimals: 6,
+                    liq_threshold_bps: 8500,
+                    liq_bonus_bps: 500,
+                },
             ],
         }
     }
@@ -209,7 +260,13 @@ mod tests {
     #[async_trait]
     impl RiskStore for MemStore {
         async fn load_position(&self, b: Address) -> anyhow::Result<Position> {
-            Ok(self.positions.lock().unwrap().get(&b).copied().unwrap_or_default())
+            Ok(self
+                .positions
+                .lock()
+                .unwrap()
+                .get(&b)
+                .copied()
+                .unwrap_or_default())
         }
         async fn all_with_debt(&self) -> anyhow::Result<Vec<(Address, Position)>> {
             Ok(self
@@ -221,7 +278,13 @@ mod tests {
                 .map(|(a, p)| (*a, *p))
                 .collect())
         }
-        async fn commit_applied(&self, key: EventKey, b: Address, before: Position, after: Position) -> anyhow::Result<bool> {
+        async fn commit_applied(
+            &self,
+            key: EventKey,
+            b: Address,
+            before: Position,
+            after: Position,
+        ) -> anyhow::Result<bool> {
             let mut applied = self.applied.lock().unwrap();
             if applied.contains_key(&key) {
                 return Ok(false);
@@ -232,7 +295,9 @@ mod tests {
         }
         async fn undo(&self, key: EventKey) -> anyhow::Result<bool> {
             let mut applied = self.applied.lock().unwrap();
-            let Some((b, before)) = applied.remove(&key) else { return Ok(false) };
+            let Some((b, before)) = applied.remove(&key) else {
+                return Ok(false);
+            };
             self.positions.lock().unwrap().insert(b, before);
             Ok(true)
         }
@@ -251,7 +316,10 @@ mod tests {
     }
 
     fn retract_of(m: &EventMessage) -> EventMessage {
-        EventMessage { kind: MessageKind::Retract, ..m.clone() }
+        EventMessage {
+            kind: MessageKind::Retract,
+            ..m.clone()
+        }
     }
 
     fn block(n: u64, frozen: bool, debt_price: U256, fee_price: U256) -> BlockMessage {
@@ -283,17 +351,47 @@ mod tests {
     #[tokio::test]
     async fn duplicate_log_is_applied_once() {
         let engine = RiskEngine::new(MemStore::default(), params());
-        let dep = log(1, 0, PoolEvent::CollateralDeposited { user: ALICE, asset: FEE, amount: wad(10) });
+        let dep = log(
+            1,
+            0,
+            PoolEvent::CollateralDeposited {
+                user: ALICE,
+                asset: FEE,
+                amount: wad(10),
+            },
+        );
         assert!(engine.handle_event(&dep).await.unwrap());
-        assert!(!engine.handle_event(&dep).await.unwrap(), "redelivery must not double-count");
-        assert_eq!(engine.store.load_position(ALICE).await.unwrap().amounts[0], wad(10));
+        assert!(
+            !engine.handle_event(&dep).await.unwrap(),
+            "redelivery must not double-count"
+        );
+        assert_eq!(
+            engine.store.load_position(ALICE).await.unwrap().amounts[0],
+            wad(10)
+        );
     }
 
     #[tokio::test]
     async fn retraction_restores_the_pre_orphan_state() {
         let engine = RiskEngine::new(MemStore::default(), params());
-        let dep = log(1, 0, PoolEvent::CollateralDeposited { user: ALICE, asset: FEE, amount: wad(10) });
-        let borrow = log(2, 0, PoolEvent::Borrowed { user: ALICE, amount: U256::from(5), scaled: U256::from(5) });
+        let dep = log(
+            1,
+            0,
+            PoolEvent::CollateralDeposited {
+                user: ALICE,
+                asset: FEE,
+                amount: wad(10),
+            },
+        );
+        let borrow = log(
+            2,
+            0,
+            PoolEvent::Borrowed {
+                user: ALICE,
+                amount: U256::from(5),
+                scaled: U256::from(5),
+            },
+        );
         engine.handle_event(&dep).await.unwrap();
         engine.handle_event(&borrow).await.unwrap();
 
@@ -307,33 +405,66 @@ mod tests {
     #[tokio::test]
     async fn retraction_then_replay_on_new_fork_applies_again() {
         let engine = RiskEngine::new(MemStore::default(), params());
-        let borrow = log(2, 0, PoolEvent::Borrowed { user: ALICE, amount: U256::from(7), scaled: U256::from(7) });
+        let borrow = log(
+            2,
+            0,
+            PoolEvent::Borrowed {
+                user: ALICE,
+                amount: U256::from(7),
+                scaled: U256::from(7),
+            },
+        );
         engine.handle_event(&borrow).await.unwrap();
         engine.handle_event(&retract_of(&borrow)).await.unwrap();
         // The same (block_hash, log_index) reappears on the canonical chain.
         assert!(engine.handle_event(&borrow).await.unwrap());
-        assert_eq!(engine.store.load_position(ALICE).await.unwrap().debt_scaled, U256::from(7));
+        assert_eq!(
+            engine.store.load_position(ALICE).await.unwrap().debt_scaled,
+            U256::from(7)
+        );
     }
 
     #[tokio::test]
     async fn unhealthy_position_produces_a_signal_and_frozen_suppresses_it() {
         let mut engine = RiskEngine::new(MemStore::default(), params());
         engine
-            .handle_event(&log(1, 0, PoolEvent::CollateralDeposited { user: BOB, asset: FEE, amount: wad(10) }))
+            .handle_event(&log(
+                1,
+                0,
+                PoolEvent::CollateralDeposited {
+                    user: BOB,
+                    asset: FEE,
+                    amount: wad(10),
+                },
+            ))
             .await
             .unwrap();
         engine
-            .handle_event(&log(1, 1, PoolEvent::Borrowed { user: BOB, amount: wad(10_000), scaled: wad(10_000) }))
+            .handle_event(&log(
+                1,
+                1,
+                PoolEvent::Borrowed {
+                    user: BOB,
+                    amount: wad(10_000),
+                    scaled: wad(10_000),
+                },
+            ))
             .await
             .unwrap();
 
         // Fee token at $1200: 10 * 1200 * 80% = 9600 < 10000, so unhealthy.
-        let signals = engine.handle_block(block(3, false, WAD, wad(1200))).await.unwrap();
+        let signals = engine
+            .handle_block(block(3, false, WAD, wad(1200)))
+            .await
+            .unwrap();
         assert_eq!(signals.len(), 1);
         assert_eq!(signals[0].borrower, BOB);
         assert_eq!(signals[0].block_number, 3);
 
-        let signals = engine.handle_block(block(4, true, WAD, wad(1200))).await.unwrap();
+        let signals = engine
+            .handle_block(block(4, true, WAD, wad(1200)))
+            .await
+            .unwrap();
         assert!(signals.is_empty(), "no signals while Frozen (RS-08)");
     }
 
@@ -341,11 +472,27 @@ mod tests {
     async fn liquidation_reduces_debt_and_collateral_by_the_logged_amounts() {
         let engine = RiskEngine::new(MemStore::default(), params());
         engine
-            .handle_event(&log(1, 0, PoolEvent::CollateralDeposited { user: BOB, asset: FEE, amount: wad(10) }))
+            .handle_event(&log(
+                1,
+                0,
+                PoolEvent::CollateralDeposited {
+                    user: BOB,
+                    asset: FEE,
+                    amount: wad(10),
+                },
+            ))
             .await
             .unwrap();
         engine
-            .handle_event(&log(1, 1, PoolEvent::Borrowed { user: BOB, amount: wad(100), scaled: wad(100) }))
+            .handle_event(&log(
+                1,
+                1,
+                PoolEvent::Borrowed {
+                    user: BOB,
+                    amount: wad(100),
+                    scaled: wad(100),
+                },
+            ))
             .await
             .unwrap();
         engine
@@ -374,7 +521,15 @@ mod tests {
         let engine = RiskEngine::new(MemStore::default(), params());
         let stray = Address::repeat_byte(9);
         let err = engine
-            .handle_event(&log(1, 0, PoolEvent::CollateralDeposited { user: ALICE, asset: stray, amount: U256::from(1) }))
+            .handle_event(&log(
+                1,
+                0,
+                PoolEvent::CollateralDeposited {
+                    user: ALICE,
+                    asset: stray,
+                    amount: U256::from(1),
+                },
+            ))
             .await
             .unwrap_err();
         assert!(err.to_string().contains("unknown collateral"));

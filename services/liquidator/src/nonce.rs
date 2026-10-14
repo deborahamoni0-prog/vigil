@@ -23,7 +23,12 @@ pub enum TxPurpose {
     /// `startAuction(borrower)`
     StartAuction { borrower: Address },
     /// `liquidate(intent, signature, repayAmount)`
-    Liquidate { borrower: Address, intent: Box<LiquidationIntent>, signature: Vec<u8>, repay: U256 },
+    Liquidate {
+        borrower: Address,
+        intent: Box<LiquidationIntent>,
+        signature: Vec<u8>,
+        repay: U256,
+    },
     /// Zero-value self-transfer that fills a nonce hole.
     GapFill,
 }
@@ -52,7 +57,11 @@ pub enum Action {
     /// Nothing to do yet.
     Wait,
     /// Resend the same nonce with these fees.
-    Replace { nonce: u64, max_fee_per_gas: u128, max_priority_fee_per_gas: u128 },
+    Replace {
+        nonce: u64,
+        max_fee_per_gas: u128,
+        max_priority_fee_per_gas: u128,
+    },
     /// The transaction is gone. Fill the nonce with a self-transfer.
     GapFill { nonce: u64 },
 }
@@ -107,7 +116,12 @@ impl NonceBook {
 
     /// Decides what to do with each unconfirmed transaction at `current_block`.
     /// `dropped` lists nonces the node no longer knows about (not mined, not pending).
-    pub fn plan(&self, current_block: u64, replace_after_blocks: u64, dropped: &[u64]) -> Vec<Action> {
+    pub fn plan(
+        &self,
+        current_block: u64,
+        replace_after_blocks: u64,
+        dropped: &[u64],
+    ) -> Vec<Action> {
         let mut actions = Vec::new();
         for t in self.inflight.values() {
             if dropped.contains(&t.nonce) {
@@ -171,7 +185,10 @@ mod tests {
             let bumped = bump_fee(fee);
             assert!(bumped > fee, "fee {fee} must rise");
             // bumped/fee >= 1.125, checked in integers: bumped * 8 >= fee * 9
-            assert!(bumped * 8 >= fee * 9, "fee {fee} rose by less than 12.5% (got {bumped})");
+            assert!(
+                bumped * 8 >= fee * 9,
+                "fee {fee} rose by less than 12.5% (got {bumped})"
+            );
         }
         assert_eq!(bump_fee(1_000), 1_125);
     }
@@ -213,7 +230,11 @@ mod tests {
         assert!(b.get(0).is_none());
         assert!(b.get(1).is_none());
         assert!(b.get(2).is_some());
-        assert_eq!(b.next_nonce(), 3, "never hands out a nonce the chain has already used");
+        assert_eq!(
+            b.next_nonce(),
+            3,
+            "never hands out a nonce the chain has already used"
+        );
     }
 
     #[test]
@@ -232,6 +253,9 @@ mod tests {
         b.record_sent(tx(7, 100));
         b.replaced(7, 2_000, 200, 103);
         let t = b.get(7).unwrap();
-        assert_eq!((t.max_fee_per_gas, t.sent_block, t.replacements), (2_000, 103, 1));
+        assert_eq!(
+            (t.max_fee_per_gas, t.sent_block, t.replacements),
+            (2_000, 103, 1)
+        );
     }
 }

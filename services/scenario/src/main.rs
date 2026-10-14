@@ -13,9 +13,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::str::FromStr;
 
+use alloy::consensus::Transaction as _;
 use alloy::eips::{BlockId, BlockNumberOrTag};
 use alloy::network::{EthereumWallet, TransactionBuilder};
-use alloy::consensus::Transaction as _;
 use alloy::primitives::{keccak256, Address, B256, I256, U256};
 use alloy::providers::{DynProvider, Provider, ProviderBuilder};
 use alloy::rpc::types::{Filter, TransactionRequest};
@@ -27,7 +27,7 @@ use serde::Serialize;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
 use vigil_common::config::Deployment;
-use vigil_common::contracts::{IERC20, ILendingPool, IOracle, LiquidationIntent};
+use vigil_common::contracts::{ILendingPool, IOracle, LiquidationIntent, IERC20};
 use vigil_common::math::WAD;
 use vigil_common::model::{self, Position, Quote, MAX_COLLATERAL};
 
@@ -59,9 +59,17 @@ alloy::sol! {
 struct Args {
     #[arg(long, env = "RPC_URL", default_value = "http://127.0.0.1:8545")]
     rpc_url: String,
-    #[arg(long, env = "DEPLOYMENT_FILE", default_value = "../contracts/deployments/31337.json")]
+    #[arg(
+        long,
+        env = "DEPLOYMENT_FILE",
+        default_value = "../contracts/deployments/31337.json"
+    )]
     deployment_file: PathBuf,
-    #[arg(long, env = "DATABASE_URL", default_value = "postgres://vigil@127.0.0.1:5432/vigil")]
+    #[arg(
+        long,
+        env = "DATABASE_URL",
+        default_value = "postgres://vigil@127.0.0.1:5432/vigil"
+    )]
     database_url: String,
     #[arg(long, env = "NATS_URL", default_value = "nats://127.0.0.1:4222")]
     nats_url: String,
@@ -106,7 +114,11 @@ impl Chain {
             .wallet(EthereumWallet::from(deployer.clone()))
             .connect_http(rpc.parse()?)
             .erased();
-        Ok(Self { provider, deployer, deployment })
+        Ok(Self {
+            provider,
+            deployer,
+            deployment,
+        })
     }
 
     fn pool(&self) -> Address {
@@ -123,7 +135,9 @@ impl Chain {
 
     async fn fund_eth(&self, who: Address) -> anyhow::Result<()> {
         let amount = U256::from(10u64).pow(U256::from(20u64));
-        self.provider.raw_request::<_, ()>("anvil_setBalance".into(), (who, amount)).await?;
+        self.provider
+            .raw_request::<_, ()>("anvil_setBalance".into(), (who, amount))
+            .await?;
         Ok(())
     }
 
@@ -144,12 +158,17 @@ impl Chain {
 
     /// Sends the calls, mines them into one block, and reports which ones succeeded. Automatic
     /// mining is off during the run, so a receipt only arrives after this block is mined.
-    async fn batch_as(&self, calls: Vec<(&PrivateKeySigner, Address, Vec<u8>)>) -> anyhow::Result<Vec<bool>> {
+    async fn batch_as(
+        &self,
+        calls: Vec<(&PrivateKeySigner, Address, Vec<u8>)>,
+    ) -> anyhow::Result<Vec<bool>> {
         let mut pending = Vec::new();
         for (from, to, data) in calls {
             pending.push(self.send_as(from, to, data).await);
         }
-        self.provider.raw_request::<_, serde_json::Value>("anvil_mine".into(), (U256::from(1u64),)).await?;
+        self.provider
+            .raw_request::<_, serde_json::Value>("anvil_mine".into(), (U256::from(1u64),))
+            .await?;
         let mut ok = Vec::new();
         for p in pending {
             ok.push(match p {
@@ -161,7 +180,12 @@ impl Chain {
     }
 
     /// Sends one call as `from` in its own block and reports whether it succeeded. Reverts return false.
-    async fn call_as(&self, from: &PrivateKeySigner, to: Address, data: Vec<u8>) -> anyhow::Result<bool> {
+    async fn call_as(
+        &self,
+        from: &PrivateKeySigner,
+        to: Address,
+        data: Vec<u8>,
+    ) -> anyhow::Result<bool> {
         Ok(self.batch_as(vec![(from, to, data)]).await?[0])
     }
 
@@ -185,8 +209,12 @@ impl Chain {
 
     /// One block passes, with one second of chain time. TWAP windows then move with the chain.
     async fn advance(&self) -> anyhow::Result<()> {
-        self.provider.raw_request::<_, serde_json::Value>("evm_increaseTime".into(), (1u64,)).await?;
-        self.provider.raw_request::<_, serde_json::Value>("anvil_mine".into(), (U256::from(1u64),)).await?;
+        self.provider
+            .raw_request::<_, serde_json::Value>("evm_increaseTime".into(), (1u64,))
+            .await?;
+        self.provider
+            .raw_request::<_, serde_json::Value>("anvil_mine".into(), (U256::from(1u64),))
+            .await?;
         Ok(())
     }
 
@@ -198,9 +226,21 @@ impl Chain {
         for (bit, price) in cents.iter().enumerate() {
             let c = self.collateral(bit);
             let answer = I256::try_from(*price as i128 * 1_000_000)?; // 8-decimal feed answer
-            let _ = self.send_as(&self.deployer, c.feed, setAnswerCall { answer }.abi_encode()).await;
+            let _ = self
+                .send_as(
+                    &self.deployer,
+                    c.feed,
+                    setAnswerCall { answer }.abi_encode(),
+                )
+                .await;
             let spot = U256::from(*price) * U256::from(WAD) / U256::from(100u64);
-            let _ = self.send_as(&self.deployer, c.amm, setSpotCall { priceWad: spot }.abi_encode()).await;
+            let _ = self
+                .send_as(
+                    &self.deployer,
+                    c.amm,
+                    setSpotCall { priceWad: spot }.abi_encode(),
+                )
+                .await;
         }
         Ok(())
     }
@@ -237,7 +277,10 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let deployment = Deployment::load(&args.deployment_file)?;
     let chain = Chain::connect(&args.rpc_url, deployment).await?;
-    let pool = PgPoolOptions::new().max_connections(4).connect(&args.database_url).await?;
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&args.database_url)
+        .await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
 
     let liquidator = ensure_liquidator_keystore(&chain, &args)?;
@@ -246,8 +289,26 @@ async fn main() -> anyhow::Result<()> {
     // $10M at the debt token's 6 decimals covers every position in the cohort.
     let repay_budget = U256::from(10_000_000_000_000u64);
     let debt_token = IERC20::new(chain.deployment.debt, &chain.provider);
-    chain.call_as(&chain.deployer, chain.deployment.debt, debt_token.mint(liquidator.address(), repay_budget).calldata().to_vec()).await?;
-    chain.call_as(&liquidator, chain.deployment.debt, debt_token.approve(chain.pool(), U256::MAX).calldata().to_vec()).await?;
+    chain
+        .call_as(
+            &chain.deployer,
+            chain.deployment.debt,
+            debt_token
+                .mint(liquidator.address(), repay_budget)
+                .calldata()
+                .to_vec(),
+        )
+        .await?;
+    chain
+        .call_as(
+            &liquidator,
+            chain.deployment.debt,
+            debt_token
+                .approve(chain.pool(), U256::MAX)
+                .calldata()
+                .to_vec(),
+        )
+        .await?;
     tracing::info!(liquidator = %liquidator.address(), "liquidator wallet ready");
 
     // The Indexer starts here, so it sees the pool deployment and every seeded position. Starting
@@ -258,7 +319,11 @@ async fn main() -> anyhow::Result<()> {
     let borrowers = seed_positions(&chain, &pool).await?;
 
     tracing::info!("phase 2: crash, reorg, attack, restart");
-    let services = if args.skip_services { Vec::new() } else { start_services(&args, start_block)? };
+    let services = if args.skip_services {
+        Vec::new()
+    } else {
+        start_services(&args, start_block)?
+    };
     let crash = run_crash(&chain, &args, &borrowers, &liquidator, start_block).await?;
     stop_services(services);
 
@@ -266,13 +331,22 @@ async fn main() -> anyhow::Result<()> {
     let report = score(&chain, &pool, &borrowers, &crash, liquidator.address()).await?;
     // The run mines blocks itself. Turn automine back on so the chain behaves normally afterwards
     // (the price feed and any manual transactions would otherwise wait forever).
-    chain.provider.raw_request::<_, serde_json::Value>("anvil_setAutomine".into(), (true,)).await?;
+    chain
+        .provider
+        .raw_request::<_, serde_json::Value>("anvil_setAutomine".into(), (true,))
+        .await?;
     std::fs::write(&args.report, serde_json::to_vec_pretty(&report)?)?;
     println!("{}", serde_json::to_string_pretty(&report)?);
 
-    let failures = report["hard_zero_failures"].as_array().map(|a| a.len()).unwrap_or(1);
+    let failures = report["hard_zero_failures"]
+        .as_array()
+        .map(|a| a.len())
+        .unwrap_or(1);
     if failures > 0 {
-        anyhow::bail!("{failures} hard-zero criteria failed; see {}", args.report.display());
+        anyhow::bail!(
+            "{failures} hard-zero criteria failed; see {}",
+            args.report.display()
+        );
     }
     Ok(())
 }
@@ -285,7 +359,14 @@ fn ensure_liquidator_keystore(_chain: &Chain, args: &Args) -> anyhow::Result<Pri
     if !Path::new(&target).exists() {
         let key_hex = format!("0x{}", hex_of(&key.to_bytes().to_vec()));
         let status = Command::new("cast")
-            .args(["wallet", "import", "liquidator", "--private-key", &key_hex, "--keystore-dir"])
+            .args([
+                "wallet",
+                "import",
+                "liquidator",
+                "--private-key",
+                &key_hex,
+                "--keystore-dir",
+            ])
             .arg(&args.keystore_dir)
             .args(["--unsafe-password", &args.keystore_password])
             .status()?;
@@ -333,19 +414,46 @@ async fn seed_positions(c: &Chain, pool: &PgPool) -> anyhow::Result<Vec<Borrower
 
         c.fund_eth(signer.address()).await?;
         let token = IERC20::new(col.address, &c.provider);
-        c.call_as(&c.deployer, col.address, token.mint(signer.address(), amount).calldata().to_vec()).await?;
-        c.call_as(&signer, col.address, token.approve(c.pool(), U256::MAX).calldata().to_vec()).await?;
-        c.call_as(&signer, c.pool(), pool_contract.depositCollateral(col.address, amount).calldata().to_vec()).await?;
+        c.call_as(
+            &c.deployer,
+            col.address,
+            token.mint(signer.address(), amount).calldata().to_vec(),
+        )
+        .await?;
+        c.call_as(
+            &signer,
+            col.address,
+            token.approve(c.pool(), U256::MAX).calldata().to_vec(),
+        )
+        .await?;
+        c.call_as(
+            &signer,
+            c.pool(),
+            pool_contract
+                .depositCollateral(col.address, amount)
+                .calldata()
+                .to_vec(),
+        )
+        .await?;
 
         // Value the credited amount (after any transfer fee), then borrow to the target health factor.
-        let credited = pool_contract.collateralOf(signer.address(), col.address).call().await?;
-        let value_wad = credited * U256::from(price_usd) * U256::from(WAD) / U256::from(10u64).pow(U256::from(col.decimals));
+        let credited = pool_contract
+            .collateralOf(signer.address(), col.address)
+            .call()
+            .await?;
+        let value_wad = credited * U256::from(price_usd) * U256::from(WAD)
+            / U256::from(10u64).pow(U256::from(col.decimals));
         let weighted_wad = value_wad * U256::from(threshold_bps) / U256::from(10_000u64);
         let target_hf_bps = 10_500 + (i as u128 * 5_500) / BORROWERS as u128; // 1.05 .. 1.605
         let debt_units = weighted_wad * U256::from(10_000u64)
             / U256::from(target_hf_bps)
             / U256::from(10u64).pow(U256::from(12u64));
-        c.call_as(&signer, c.pool(), pool_contract.borrow(debt_units).calldata().to_vec()).await?;
+        c.call_as(
+            &signer,
+            c.pool(),
+            pool_contract.borrow(debt_units).calldata().to_vec(),
+        )
+        .await?;
 
         // Standing intents: the borrower signs several intents, each for the full debt, with
         // nonces 1..=INTENTS_PER_BORROWER. A partial liquidation spends its nonce, so the Liquidator
@@ -417,16 +525,35 @@ fn spawn_service(args: &Args, bin: &str, start_block: u64) -> anyhow::Result<Chi
     Ok(child)
 }
 
-async fn run_crash(c: &Chain, args: &Args, borrowers: &[Borrower], _liquidator: &PrivateKeySigner, start_block: u64) -> anyhow::Result<Crash> {
+async fn run_crash(
+    c: &Chain,
+    args: &Args,
+    borrowers: &[Borrower],
+    _liquidator: &PrivateKeySigner,
+    start_block: u64,
+) -> anyhow::Result<Crash> {
     // Blocks come only from this driver, so a reorg orphans exactly the blocks it creates.
-    c.provider.raw_request::<_, serde_json::Value>("anvil_setIntervalMining".into(), (0u64,)).await?;
-    let mut crash = Crash { indexer_start_block: start_block, start_block: c.block().await?, ..Default::default() };
-    let mut liquidator = if args.skip_services { None } else { Some(spawn_service(args, "vigil-liquidator", start_block)?) };
+    c.provider
+        .raw_request::<_, serde_json::Value>("anvil_setIntervalMining".into(), (0u64,))
+        .await?;
+    let mut crash = Crash {
+        indexer_start_block: start_block,
+        start_block: c.block().await?,
+        ..Default::default()
+    };
+    let mut liquidator = if args.skip_services {
+        None
+    } else {
+        Some(spawn_service(args, "vigil-liquidator", start_block)?)
+    };
 
     // Linear 25% drop over 15 blocks. Start prices in cents: fee $2000, six $2, eight $60000.
     let base = [200_000u128, 200, 6_000_000];
     for step in 1..=CRASH_STEPS {
-        let scaled: Vec<u128> = base.iter().map(|p| p * (100 - 25 * step as u128 / CRASH_STEPS as u128) / 100).collect();
+        let scaled: Vec<u128> = base
+            .iter()
+            .map(|p| p * (100 - 25 * step as u128 / CRASH_STEPS as u128) / 100)
+            .collect();
         c.set_prices([scaled[0], scaled[1], scaled[2]]).await?;
         c.advance().await?;
     }
@@ -470,7 +597,10 @@ async fn run_crash(c: &Chain, args: &Args, borrowers: &[Borrower], _liquidator: 
     let mut quiet = 0;
     for _ in 0..FLUSH_MAX_BLOCKS {
         let status: serde_json::Value = c.provider.raw_request("txpool_status".into(), ()).await?;
-        let pending = status.get("pending").and_then(|v| v.as_str()).unwrap_or("0x0");
+        let pending = status
+            .get("pending")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0x0");
         quiet = if pending == "0x0" { quiet + 1 } else { 0 };
         if quiet >= FLUSH_QUIET_BLOCKS {
             break;
@@ -492,7 +622,10 @@ async fn inject_two_block_reorg(c: &Chain) -> anyhow::Result<()> {
     c.advance().await?;
     c.set_prices([155_000, 200, 3_950_000]).await?;
     c.advance().await?;
-    let reverted: bool = c.provider.raw_request("evm_revert".into(), (snapshot,)).await?;
+    let reverted: bool = c
+        .provider
+        .raw_request("evm_revert".into(), (snapshot,))
+        .await?;
     anyhow::ensure!(reverted, "evm_revert failed");
     c.set_prices([154_000, 200, 3_900_000]).await?;
     c.advance().await?;
@@ -530,10 +663,20 @@ async fn run_attacker(c: &Chain, borrowers: &[Borrower]) -> anyhow::Result<Attac
     for b in &healthy {
         auction_before.push(pool.auctionStartOf(b.signer.address()).call().await?);
     }
-    let mut calls: Vec<(&PrivateKeySigner, Address, Vec<u8>)> =
-        vec![(&c.deployer, fee.amm, setSpotCall { priceWad: wad(1_400) }.abi_encode())];
+    let mut calls: Vec<(&PrivateKeySigner, Address, Vec<u8>)> = vec![(
+        &c.deployer,
+        fee.amm,
+        setSpotCall {
+            priceWad: wad(1_400),
+        }
+        .abi_encode(),
+    )];
     for b in &healthy {
-        calls.push((&attacker, c.pool(), pool.startAuction(b.signer.address()).calldata().to_vec()));
+        calls.push((
+            &attacker,
+            c.pool(),
+            pool.startAuction(b.signer.address()).calldata().to_vec(),
+        ));
     }
     let results = c.batch_as(calls).await?;
     for (i, _) in healthy.iter().enumerate() {
@@ -544,7 +687,15 @@ async fn run_attacker(c: &Chain, borrowers: &[Borrower]) -> anyhow::Result<Attac
     }
     // Restore the honest AMM spot, so later blocks see a consistent market.
     let _ = oracle;
-    c.call_as(&c.deployer, fee.amm, setSpotCall { priceWad: wad(1_600) }.abi_encode()).await?;
+    c.call_as(
+        &c.deployer,
+        fee.amm,
+        setSpotCall {
+            priceWad: wad(1_600),
+        }
+        .abi_encode(),
+    )
+    .await?;
     Ok(out)
 }
 
@@ -556,7 +707,10 @@ async fn score(
     liquidator: Address,
 ) -> anyhow::Result<serde_json::Value> {
     let p = ILendingPool::new(c.pool(), &c.provider);
-    let frozen = IOracle::new(c.deployment.oracle, &c.provider).isFrozen().call().await?;
+    let frozen = IOracle::new(c.deployment.oracle, &c.provider)
+        .isFrozen()
+        .call()
+        .await?;
 
     // A borrower still below 1 is a failure, unless every blocked attempt for it is refused by
     // invariant I3 (HealthDecreased). Those are reported separately, so the blockage stays visible.
@@ -590,7 +744,11 @@ async fn score(
     let mut liquidations_by_attacker = 0u64;
     for log in &liquidated {
         liquidations += 1;
-        if ILendingPool::Liquidated::decode_log(&log.inner)?.data.liquidator == key_for("vigil-attacker").address() {
+        if ILendingPool::Liquidated::decode_log(&log.inner)?
+            .data
+            .liquidator
+            == key_for("vigil-attacker").address()
+        {
             liquidations_by_attacker += 1;
         }
     }
@@ -600,7 +758,11 @@ async fn score(
     let (indexer_gaps, indexer_dups) = indexer_check(c, pool, crash).await?;
     let t = p.totals().call().await?;
 
-    let attack_success = crash.attack.as_ref().map(|a| a.manipulation_successes as u64).unwrap_or(0);
+    let attack_success = crash
+        .attack
+        .as_ref()
+        .map(|a| a.manipulation_successes as u64)
+        .unwrap_or(0);
     let manipulation = attack_success + liquidations_by_attacker;
     let checks: [(&str, u64); 6] = [
         ("nonce_gaps", nonce_gaps),
@@ -610,7 +772,11 @@ async fn score(
         ("indexer_duplicates", indexer_dups),
         ("positions_still_liquidatable", still_liquidatable),
     ];
-    let failures: Vec<String> = checks.iter().filter(|(_, v)| *v != 0).map(|(n, _)| n.to_string()).collect();
+    let failures: Vec<String> = checks
+        .iter()
+        .filter(|(_, v)| *v != 0)
+        .map(|(n, _)| n.to_string())
+        .collect();
 
     Ok(serde_json::json!({
         "borrowers": borrowers.len(),
@@ -642,13 +808,26 @@ async fn invariant_blocked(c: &Chain, pool: &PgPool, who: Address) -> anyhow::Re
         .await?;
     for row in rows {
         let hash: String = row.try_get("tx_hash")?;
-        let Some(tx) = c.provider.get_transaction_by_hash(B256::from_str(&hash)?).await? else { continue };
-        let Some(mined) = tx.block_number else { continue };
+        let Some(tx) = c
+            .provider
+            .get_transaction_by_hash(B256::from_str(&hash)?)
+            .await?
+        else {
+            continue;
+        };
+        let Some(mined) = tx.block_number else {
+            continue;
+        };
         let req = TransactionRequest::default()
             .with_from(tx.inner.signer())
             .with_to(c.pool())
             .with_input(tx.input().clone());
-        if let Err(e) = c.provider.call(req).block(BlockId::number(mined.saturating_sub(1))).await {
+        if let Err(e) = c
+            .provider
+            .call(req)
+            .block(BlockId::number(mined.saturating_sub(1)))
+            .await
+        {
             if format!("{e:?}").to_lowercase().contains(&selector_hex) {
                 return Ok(true);
             }
@@ -671,7 +850,11 @@ async fn parity_check(c: &Chain, borrowers: &[Borrower]) -> anyhow::Result<u64> 
     for cc in &c.deployment.collaterals {
         prices[cc.bit_index as usize] = oracle.getPrice(cc.address).block(at).call().await?;
     }
-    let quote = Quote { debt_index: idx.debtIndex, debt_price, collateral_prices: prices };
+    let quote = Quote {
+        debt_index: idx.debtIndex,
+        debt_price,
+        collateral_prices: prices,
+    };
 
     let mut mismatches = 0u64;
     for b in borrowers.iter().step_by(5) {
@@ -679,7 +862,8 @@ async fn parity_check(c: &Chain, borrowers: &[Borrower]) -> anyhow::Result<u64> 
         let pos_raw = p.positionOf(who).block(at).call().await?;
         let mut amounts = [U256::ZERO; MAX_COLLATERAL];
         for cc in &c.deployment.collaterals {
-            amounts[cc.bit_index as usize] = p.collateralOf(who, cc.address).block(at).call().await?;
+            amounts[cc.bit_index as usize] =
+                p.collateralOf(who, cc.address).block(at).call().await?;
         }
         let pos = Position {
             bitmap: u8::try_from(pos_raw.bitmap).unwrap_or(0),
@@ -710,14 +894,22 @@ async fn indexer_check(c: &Chain, pool: &PgPool, crash: &Crash) -> anyhow::Resul
     ];
     let logs = c
         .provider
-        .get_logs(&Filter::new().address(c.pool()).event_signature(sigs).from_block(crash.indexer_start_block).to_block(c.provider.get_block_number().await?))
+        .get_logs(
+            &Filter::new()
+                .address(c.pool())
+                .event_signature(sigs)
+                .from_block(crash.indexer_start_block)
+                .to_block(c.provider.get_block_number().await?),
+        )
         .await?;
     let canonical: HashSet<(B256, u64)> = logs
         .iter()
         .filter_map(|l| Some((l.block_hash?, l.log_index?)))
         .collect();
 
-    let rows = sqlx::query("SELECT block_hash, log_index FROM processed_events").fetch_all(pool).await?;
+    let rows = sqlx::query("SELECT block_hash, log_index FROM processed_events")
+        .fetch_all(pool)
+        .await?;
     let mut processed = HashSet::new();
     for r in rows {
         let h: String = r.try_get("block_hash")?;
@@ -731,13 +923,24 @@ async fn indexer_check(c: &Chain, pool: &PgPool, crash: &Crash) -> anyhow::Resul
 
 /// Liquidator nonces: every nonce from zero to the latest must be used, with no holes.
 async fn nonce_gap_check(c: &Chain, who: Address, crash: &Crash) -> anyhow::Result<u64> {
-    let latest = c.provider.get_transaction_count(who).block_id(BlockId::latest()).await?;
+    let latest = c
+        .provider
+        .get_transaction_count(who)
+        .block_id(BlockId::latest())
+        .await?;
     // Scan up to the head, not the crash end: the flush after the crash window mines more of the
     // Liquidator's transactions, and those must not be counted as holes.
     let head = c.provider.get_block_number().await?;
     let mut used = HashSet::new();
     for n in crash.start_block..=head {
-        let Some(block) = c.provider.get_block_by_number(BlockNumberOrTag::Number(n)).full().await? else { continue };
+        let Some(block) = c
+            .provider
+            .get_block_by_number(BlockNumberOrTag::Number(n))
+            .full()
+            .await?
+        else {
+            continue;
+        };
         for tx in block.transactions.txns() {
             if tx.inner.signer() == who {
                 used.insert(tx.nonce());
@@ -745,7 +948,9 @@ async fn nonce_gap_check(c: &Chain, who: Address, crash: &Crash) -> anyhow::Resu
         }
     }
     // Nonces before the scenario started also count. Use a window from the first observed nonce.
-    let Some(first) = used.iter().min().copied() else { return Ok(0) };
+    let Some(first) = used.iter().min().copied() else {
+        return Ok(0);
+    };
     let holes = (first..latest).filter(|n| !used.contains(n)).count() as u64;
     Ok(holes)
 }

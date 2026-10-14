@@ -24,7 +24,10 @@ pub struct RecentBlocks {
 
 impl RecentBlocks {
     pub fn new(depth: usize) -> Self {
-        Self { depth, blocks: VecDeque::with_capacity(depth) }
+        Self {
+            depth,
+            blocks: VecDeque::with_capacity(depth),
+        }
     }
 
     pub fn last(&self) -> Option<&BlockRef> {
@@ -72,7 +75,9 @@ pub enum Continuity {
 pub fn continuity(recent: &RecentBlocks, new: &BlockRef) -> Continuity {
     match recent.last() {
         None => Continuity::Fresh,
-        Some(last) if new.number == last.number + 1 && new.parent == last.hash => Continuity::Extends,
+        Some(last) if new.number == last.number + 1 && new.parent == last.hash => {
+            Continuity::Extends
+        }
         Some(last) if new.number == last.number + 1 => Continuity::Reorged,
         // Anything other than the next block is a caller bug, and the loop never produces it.
         Some(_) => Continuity::Reorged,
@@ -82,12 +87,17 @@ pub fn continuity(recent: &RecentBlocks, new: &BlockRef) -> Continuity {
 /// Walks back from the last recorded block until the chain's hash matches the stored hash.
 /// `canonical_hash` returns the chain's current hash for a block number. The returned number is
 /// the common ancestor. `None` means no match within the ring, so the caller must fail closed.
-pub async fn find_ancestor<F, Fut>(recent: &RecentBlocks, mut canonical_hash: F) -> Result<Option<u64>, anyhow::Error>
+pub async fn find_ancestor<F, Fut>(
+    recent: &RecentBlocks,
+    mut canonical_hash: F,
+) -> Result<Option<u64>, anyhow::Error>
 where
     F: FnMut(u64) -> Fut,
     Fut: std::future::Future<Output = Result<Option<B256>, anyhow::Error>>,
 {
-    let Some(last) = recent.last() else { return Ok(None) };
+    let Some(last) = recent.last() else {
+        return Ok(None);
+    };
     let floor = recent.lowest().unwrap_or(last.number);
     let mut n = last.number;
     loop {
@@ -115,7 +125,11 @@ mod tests {
     }
 
     fn block(n: u64, tag: u8) -> BlockRef {
-        BlockRef { number: n, hash: h(n, tag), parent: if n == 0 { B256::ZERO } else { h(n - 1, tag) } }
+        BlockRef {
+            number: n,
+            hash: h(n, tag),
+            parent: if n == 0 { B256::ZERO } else { h(n - 1, tag) },
+        }
     }
 
     #[test]
@@ -134,7 +148,10 @@ mod tests {
         let mut r = RecentBlocks::new(10);
         r.push(block(1, 0));
         assert_eq!(continuity(&r, &block(2, 0)), Continuity::Extends);
-        assert_eq!(continuity(&RecentBlocks::new(10), &block(2, 0)), Continuity::Fresh);
+        assert_eq!(
+            continuity(&RecentBlocks::new(10), &block(2, 0)),
+            Continuity::Fresh
+        );
     }
 
     #[test]
@@ -143,7 +160,11 @@ mod tests {
         r.push(block(1, 0));
         r.push(block(2, 0));
         // Block 3 from another fork: its parent is block 2 of fork 1, so the parent hash differs.
-        let fork = BlockRef { number: 3, hash: h(3, 9), parent: h(2, 9) };
+        let fork = BlockRef {
+            number: 3,
+            hash: h(3, 9),
+            parent: h(2, 9),
+        };
         assert_eq!(continuity(&r, &fork), Continuity::Reorged);
     }
 

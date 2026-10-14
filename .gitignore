@@ -2,7 +2,6 @@
 contracts/out/
 contracts/cache/
 contracts/broadcast/
-contracts/lib/
 contracts/deployments/31337.json
 
 # Rust

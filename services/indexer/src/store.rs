@@ -21,9 +21,11 @@ impl PgIndexerStore {
 #[async_trait]
 impl IndexerStore for PgIndexerStore {
     async fn load_cursor(&self) -> anyhow::Result<Option<BlockRef>> {
-        let row = sqlx::query("SELECT block_number, block_hash, parent_hash FROM indexer_cursor WHERE id = 1")
-            .fetch_optional(&self.pool)
-            .await?;
+        let row = sqlx::query(
+            "SELECT block_number, block_hash, parent_hash FROM indexer_cursor WHERE id = 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
         let Some(row) = row else { return Ok(None) };
         let number: i64 = row.try_get("block_number")?;
         let hash: String = row.try_get("block_hash")?;
@@ -49,7 +51,11 @@ impl IndexerStore for PgIndexerStore {
         Ok(())
     }
 
-    async fn save_block_logs(&self, block: &BlockRef, messages: &[EventMessage]) -> anyhow::Result<()> {
+    async fn save_block_logs(
+        &self,
+        block: &BlockRef,
+        messages: &[EventMessage],
+    ) -> anyhow::Result<()> {
         let mut tx = self.pool.begin().await?;
         sqlx::query("DELETE FROM indexer_block_logs WHERE block_number = $1")
             .bind(block.number as i64)

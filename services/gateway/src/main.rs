@@ -30,9 +30,17 @@ use vigil_common::contracts::{ILendingPool, LiquidationIntent};
 struct Args {
     #[arg(long, env = "RPC_URL", default_value = "http://127.0.0.1:8545")]
     rpc_url: String,
-    #[arg(long, env = "DEPLOYMENT_FILE", default_value = "../contracts/deployments/31337.json")]
+    #[arg(
+        long,
+        env = "DEPLOYMENT_FILE",
+        default_value = "../contracts/deployments/31337.json"
+    )]
     deployment_file: String,
-    #[arg(long, env = "DATABASE_URL", default_value = "postgres://vigil@127.0.0.1:5432/vigil")]
+    #[arg(
+        long,
+        env = "DATABASE_URL",
+        default_value = "postgres://vigil@127.0.0.1:5432/vigil"
+    )]
     database_url: String,
     #[arg(long, env = "NATS_URL", default_value = "nats://127.0.0.1:4222")]
     nats_url: String,
@@ -52,20 +60,35 @@ struct AppState {
 }
 
 fn now_ms() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     vigil_common::telemetry::init("gateway");
     let args = Args::parse();
-    let deployment_json: Value = serde_json::from_str(&std::fs::read_to_string(&args.deployment_file)?)?;
+    let deployment_json: Value =
+        serde_json::from_str(&std::fs::read_to_string(&args.deployment_file)?)?;
     let deployment = Deployment::load(&args.deployment_file)?;
-    let pool = PgPoolOptions::new().max_connections(5).connect(&args.database_url).await?;
-    let chain = ProviderBuilder::new().connect_http(args.rpc_url.parse()?).erased();
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&args.database_url)
+        .await?;
+    let chain = ProviderBuilder::new()
+        .connect_http(args.rpc_url.parse()?)
+        .erased();
     let (live, _) = broadcast::channel::<String>(1024);
 
-    let state = Arc::new(AppState { pool, chain, deployment, deployment_json, live: live.clone() });
+    let state = Arc::new(AppState {
+        pool,
+        chain,
+        deployment,
+        deployment_json,
+        live: live.clone(),
+    });
 
     // Stage 1: NATS, every subject, forwarded as it arrives.
     let nats = async_nats::connect(&args.nats_url).await?;
@@ -77,8 +100,14 @@ async fn main() -> anyhow::Result<()> {
         };
         while let Some(msg) = sub.next().await {
             let data: Value = serde_json::from_slice(&msg.payload).unwrap_or(Value::Null);
-            let stage = msg.subject.as_str().trim_start_matches("vigil.").to_string();
-            let _ = nats_live.send(json!({ "kind": "nats", "stage": stage, "at": now_ms(), "data": data }).to_string());
+            let stage = msg
+                .subject
+                .as_str()
+                .trim_start_matches("vigil.")
+                .to_string();
+            let _ = nats_live.send(
+                json!({ "kind": "nats", "stage": stage, "at": now_ms(), "data": data }).to_string(),
+            );
         }
     });
 
@@ -87,10 +116,14 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(async move {
         loop {
             if let Ok(snapshot) = chain_snapshot(&poll_state).await {
-                let _ = poll_state.live.send(json!({ "kind": "chain", "at": now_ms(), "data": snapshot }).to_string());
+                let _ = poll_state
+                    .live
+                    .send(json!({ "kind": "chain", "at": now_ms(), "data": snapshot }).to_string());
             }
             if let Ok(snapshot) = db_snapshot(&poll_state.pool).await {
-                let _ = poll_state.live.send(json!({ "kind": "db", "at": now_ms(), "data": snapshot }).to_string());
+                let _ = poll_state
+                    .live
+                    .send(json!({ "kind": "db", "at": now_ms(), "data": snapshot }).to_string());
             }
             tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         }
@@ -124,10 +157,20 @@ async fn chain_snapshot(s: &AppState) -> anyhow::Result<Value> {
     let frozen = oracle.isFrozen().call().await?;
     let mut prices = Vec::new();
     for c in &s.deployment.collaterals {
-        let p = oracle.getPrice(c.address).call().await.map(|v| v.to_string()).unwrap_or_else(|_| "frozen".into());
+        let p = oracle
+            .getPrice(c.address)
+            .call()
+            .await
+            .map(|v| v.to_string())
+            .unwrap_or_else(|_| "frozen".into());
         prices.push(json!({ "name": c.name, "price_wad": p }));
     }
-    let debt_price = oracle.getPrice(s.deployment.debt).call().await.map(|v| v.to_string()).unwrap_or_else(|_| "frozen".into());
+    let debt_price = oracle
+        .getPrice(s.deployment.debt)
+        .call()
+        .await
+        .map(|v| v.to_string())
+        .unwrap_or_else(|_| "frozen".into());
     Ok(json!({
         "head": head,
         "frozen": frozen,
@@ -143,12 +186,27 @@ async fn chain_snapshot(s: &AppState) -> anyhow::Result<Value> {
 }
 
 async fn db_snapshot(pool: &PgPool) -> anyhow::Result<Value> {
-    let cursor = sqlx::query("SELECT block_number FROM indexer_cursor WHERE id = 1").fetch_optional(pool).await?;
+    let cursor = sqlx::query("SELECT block_number FROM indexer_cursor WHERE id = 1")
+        .fetch_optional(pool)
+        .await?;
     let cursor: Option<i64> = cursor.map(|r| r.get("block_number"));
-    let processed: i64 = sqlx::query("SELECT COUNT(*) AS n FROM processed_events").fetch_one(pool).await?.get("n");
-    let positions: i64 = sqlx::query("SELECT COUNT(*) AS n FROM positions WHERE debt_scaled <> '0'").fetch_one(pool).await?.get("n");
-    let intents: i64 = sqlx::query("SELECT COUNT(*) AS n FROM intents").fetch_one(pool).await?.get("n");
-    let txs: i64 = sqlx::query("SELECT COUNT(*) AS n FROM liquidator_txs").fetch_one(pool).await?.get("n");
+    let processed: i64 = sqlx::query("SELECT COUNT(*) AS n FROM processed_events")
+        .fetch_one(pool)
+        .await?
+        .get("n");
+    let positions: i64 =
+        sqlx::query("SELECT COUNT(*) AS n FROM positions WHERE debt_scaled <> '0'")
+            .fetch_one(pool)
+            .await?
+            .get("n");
+    let intents: i64 = sqlx::query("SELECT COUNT(*) AS n FROM intents")
+        .fetch_one(pool)
+        .await?
+        .get("n");
+    let txs: i64 = sqlx::query("SELECT COUNT(*) AS n FROM liquidator_txs")
+        .fetch_one(pool)
+        .await?
+        .get("n");
     Ok(json!({
         "indexerCursor": cursor,
         "processedEvents": processed,
@@ -158,7 +216,9 @@ async fn db_snapshot(pool: &PgPool) -> anyhow::Result<Value> {
     }))
 }
 
-async fn stream(State(s): State<Arc<AppState>>) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
+async fn stream(
+    State(s): State<Arc<AppState>>,
+) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
     let rx = s.live.subscribe();
     let events = futures::stream::unfold(rx, |mut rx| async move {
         loop {
@@ -198,21 +258,38 @@ async fn positions(State(s): State<Arc<AppState>>) -> Result<Json<Value>, (Statu
     Ok(Json(json!(out)))
 }
 
-async fn position(State(s): State<Arc<AppState>>, Path(addr): Path<String>) -> Result<Json<Value>, (StatusCode, String)> {
-    let a = Address::from_str(&addr).map_err(|_| (StatusCode::BAD_REQUEST, "bad address".into()))?;
+async fn position(
+    State(s): State<Arc<AppState>>,
+    Path(addr): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let a =
+        Address::from_str(&addr).map_err(|_| (StatusCode::BAD_REQUEST, "bad address".into()))?;
     let row = sqlx::query("SELECT borrower, bitmap, debt_scaled, amount_0, amount_1, amount_2 FROM positions WHERE borrower = $1")
         .bind(format!("{a:#x}"))
         .fetch_optional(&s.pool)
         .await
         .map_err(|e| err500(e.into()))?;
-    let Some(row) = row else { return Ok(Json(json!({ "borrower": format!("{a:#x}"), "empty": true }))) };
+    let Some(row) = row else {
+        return Ok(Json(
+            json!({ "borrower": format!("{a:#x}"), "empty": true }),
+        ));
+    };
     position_json(&s, a, &row).await.map(Json).map_err(err500)
 }
 
 /// Merges the Risk Engine's stored position with the health factor read live from the pool.
-async fn position_json(s: &AppState, who: Address, row: &sqlx::postgres::PgRow) -> anyhow::Result<Value> {
+async fn position_json(
+    s: &AppState,
+    who: Address,
+    row: &sqlx::postgres::PgRow,
+) -> anyhow::Result<Value> {
     let pool = ILendingPool::new(s.deployment.pool, &s.chain);
-    let hf = pool.getHealthFactor(who).call().await.map(|v| v.to_string()).unwrap_or_else(|_| "n/a".into());
+    let hf = pool
+        .getHealthFactor(who)
+        .call()
+        .await
+        .map(|v| v.to_string())
+        .unwrap_or_else(|_| "n/a".into());
     let auction = pool.auctionStartOf(who).call().await?;
     let debt = pool.debtOf(who).call().await?;
     let txt = |c: &str| -> String { row.try_get::<String, _>(c).unwrap_or_default() };
@@ -229,8 +306,12 @@ async fn position_json(s: &AppState, who: Address, row: &sqlx::postgres::PgRow) 
 
 /// Live account state straight from the pool and oracle, so the page can show what the contract
 /// will enforce. The Risk Engine's copy of the position is reported alongside, not used for the numbers.
-async fn account(State(s): State<Arc<AppState>>, Path(addr): Path<String>) -> Result<Json<Value>, (StatusCode, String)> {
-    let who = Address::from_str(&addr).map_err(|_| (StatusCode::BAD_REQUEST, "bad address".into()))?;
+async fn account(
+    State(s): State<Arc<AppState>>,
+    Path(addr): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let who =
+        Address::from_str(&addr).map_err(|_| (StatusCode::BAD_REQUEST, "bad address".into()))?;
     account_json(&s, who).await.map(Json).map_err(err500)
 }
 
@@ -241,12 +322,25 @@ async fn account_json(s: &AppState, who: Address) -> anyhow::Result<Value> {
     let supplied = pool.supplyOf(who).call().await?;
     let auction = pool.auctionStartOf(who).call().await?;
     // Health factor reverts while the oracle is frozen, so it is reported as null rather than failing the page.
-    let hf = if debt.is_zero() { None } else { pool.getHealthFactor(who).call().await.ok().map(|v| v.to_string()) };
+    let hf = if debt.is_zero() {
+        None
+    } else {
+        pool.getHealthFactor(who)
+            .call()
+            .await
+            .ok()
+            .map(|v| v.to_string())
+    };
 
     let mut collaterals = Vec::new();
     for c in &s.deployment.collaterals {
         let amount = pool.collateralOf(who, c.address).call().await?;
-        let price = oracle.getPrice(c.address).call().await.ok().map(|v| v.to_string());
+        let price = oracle
+            .getPrice(c.address)
+            .call()
+            .await
+            .ok()
+            .map(|v| v.to_string());
         collaterals.push(json!({
             "name": c.name,
             "address": format!("{:#x}", c.address),
@@ -256,13 +350,20 @@ async fn account_json(s: &AppState, who: Address) -> anyhow::Result<Value> {
             "priceWad": price,
         }));
     }
-    let debt_price = oracle.getPrice(s.deployment.debt).call().await.ok().map(|v| v.to_string());
+    let debt_price = oracle
+        .getPrice(s.deployment.debt)
+        .call()
+        .await
+        .ok()
+        .map(|v| v.to_string());
 
-    let tracked: i64 = sqlx::query("SELECT COUNT(*) AS n FROM positions WHERE borrower = $1 AND debt_scaled <> '0'")
-        .bind(format!("{who:#x}"))
-        .fetch_one(&s.pool)
-        .await?
-        .get("n");
+    let tracked: i64 = sqlx::query(
+        "SELECT COUNT(*) AS n FROM positions WHERE borrower = $1 AND debt_scaled <> '0'",
+    )
+    .bind(format!("{who:#x}"))
+    .fetch_one(&s.pool)
+    .await?
+    .get("n");
 
     Ok(json!({
         "borrower": format!("{who:#x}"),
@@ -337,10 +438,19 @@ struct IntentBody {
 
 /// Accepts a borrower-signed intent only if the signature recovers to the borrower, over the same
 /// EIP-712 digest the contract computes. Anything else is rejected before it reaches the database.
-async fn submit_intent(State(s): State<Arc<AppState>>, Json(b): Json<IntentBody>) -> impl IntoResponse {
+async fn submit_intent(
+    State(s): State<Arc<AppState>>,
+    Json(b): Json<IntentBody>,
+) -> impl IntoResponse {
     match verify_and_store(&s, b).await {
-        Ok(hash) => (StatusCode::CREATED, Json(json!({ "accepted": true, "digest": hash }))),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "accepted": false, "error": e.to_string() }))),
+        Ok(hash) => (
+            StatusCode::CREATED,
+            Json(json!({ "accepted": true, "digest": hash })),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "accepted": false, "error": e.to_string() })),
+        ),
     }
 }
 
@@ -359,7 +469,10 @@ async fn verify_and_store(s: &AppState, b: IntentBody) -> anyhow::Result<String>
     let sig_bytes = alloy::hex::decode(b.signature.trim_start_matches("0x"))?;
     let sig = Signature::try_from(sig_bytes.as_slice())?;
     let signer = sig.recover_address_from_prehash(&digest)?;
-    anyhow::ensure!(signer == borrower, "signature recovers to {signer:#x}, not the borrower");
+    anyhow::ensure!(
+        signer == borrower,
+        "signature recovers to {signer:#x}, not the borrower"
+    );
 
     sqlx::query(
         "INSERT INTO intents (borrower, nonce, collateral_asset, max_repay, min_collateral_out, deadline, signature)

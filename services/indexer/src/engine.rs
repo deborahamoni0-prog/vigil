@@ -48,7 +48,11 @@ pub trait IndexerStore: Send + Sync {
     async fn load_cursor(&self) -> anyhow::Result<Option<BlockRef>>;
     async fn save_cursor(&self, block: &BlockRef) -> anyhow::Result<()>;
     /// Stores the messages published for a block, replacing any earlier copy for that number.
-    async fn save_block_logs(&self, block: &BlockRef, messages: &[EventMessage]) -> anyhow::Result<()>;
+    async fn save_block_logs(
+        &self,
+        block: &BlockRef,
+        messages: &[EventMessage],
+    ) -> anyhow::Result<()>;
     /// Messages stored for blocks above `number`, returned in ascending order.
     async fn logs_above(&self, number: u64) -> anyhow::Result<Vec<EventMessage>>;
     /// Drops stored logs for blocks above `number`.
@@ -70,7 +74,10 @@ impl<C: ChainReader, S: EventSink, D: IndexerStore> Indexer<C, S, D> {
         let next = match store.load_cursor().await? {
             Some(cursor) => {
                 // Rebuild the ring from the chain up to the cursor, so the next head is checked.
-                let from = cursor.number.saturating_sub(REORG_DEPTH as u64 - 1).max(start_block);
+                let from = cursor
+                    .number
+                    .saturating_sub(REORG_DEPTH as u64 - 1)
+                    .max(start_block);
                 for n in from..=cursor.number {
                     if let Some(info) = chain.block_by_number(n).await? {
                         recent.push(info.block);
@@ -80,7 +87,13 @@ impl<C: ChainReader, S: EventSink, D: IndexerStore> Indexer<C, S, D> {
             }
             None => start_block,
         };
-        Ok(Self { chain, sink, store, recent, next })
+        Ok(Self {
+            chain,
+            sink,
+            store,
+            recent,
+            next,
+        })
     }
 
     /// Processes every block up to the current head. Returns how many blocks were handled.
@@ -151,7 +164,10 @@ impl<C: ChainReader, S: EventSink, D: IndexerStore> Indexer<C, S, D> {
         let mut orphaned = self.store.logs_above(ancestor).await?;
         orphaned.reverse();
         for old in orphaned {
-            let retract = EventMessage { kind: MessageKind::Retract, ..old };
+            let retract = EventMessage {
+                kind: MessageKind::Retract,
+                ..old
+            };
             self.sink.publish_event(&retract).await?;
         }
         self.store.forget_above(ancestor).await?;
@@ -189,7 +205,11 @@ mod tests {
             .map(|n| {
                 let parent_f = if n == from { parent_fork } else { fork };
                 BlockInfo {
-                    block: BlockRef { number: n, hash: hash(n, fork), parent: hash(n - 1, parent_f) },
+                    block: BlockRef {
+                        number: n,
+                        hash: hash(n, fork),
+                        parent: hash(n - 1, parent_f),
+                    },
                     timestamp: 1_000 + n,
                 }
             })
@@ -197,7 +217,12 @@ mod tests {
     }
 
     fn other(name: &str) -> DecodedLog {
-        DecodedLog { log_index: 0, event: PoolEvent::Other { name: name.to_string() } }
+        DecodedLog {
+            log_index: 0,
+            event: PoolEvent::Other {
+                name: name.to_string(),
+            },
+        }
     }
 
     #[derive(Default)]
@@ -215,7 +240,9 @@ mod tests {
                 let logs = (0..logs_per_block)
                     .map(|i| DecodedLog {
                         log_index: i as u64,
-                        event: PoolEvent::Other { name: format!("{tag}-{}-{i}", info.block.number) },
+                        event: PoolEvent::Other {
+                            name: format!("{tag}-{}-{i}", info.block.number),
+                        },
                     })
                     .collect();
                 l.insert(info.block.hash, logs);
@@ -232,7 +259,13 @@ mod tests {
             Ok(self.blocks.lock().unwrap().get(&number).copied())
         }
         async fn logs_by_hash(&self, hash: B256) -> anyhow::Result<Vec<DecodedLog>> {
-            Ok(self.logs.lock().unwrap().get(&hash).cloned().unwrap_or_default())
+            Ok(self
+                .logs
+                .lock()
+                .unwrap()
+                .get(&hash)
+                .cloned()
+                .unwrap_or_default())
         }
         async fn block_message(&self, info: &BlockInfo) -> anyhow::Result<BlockMessage> {
             Ok(BlockMessage {
@@ -288,8 +321,15 @@ mod tests {
             *self.cursor.lock().unwrap() = Some(*block);
             Ok(())
         }
-        async fn save_block_logs(&self, block: &BlockRef, messages: &[EventMessage]) -> anyhow::Result<()> {
-            self.logs.lock().unwrap().insert(block.number, (block.hash, messages.to_vec()));
+        async fn save_block_logs(
+            &self,
+            block: &BlockRef,
+            messages: &[EventMessage],
+        ) -> anyhow::Result<()> {
+            self.logs
+                .lock()
+                .unwrap()
+                .insert(block.number, (block.hash, messages.to_vec()));
             Ok(())
         }
         async fn logs_above(&self, number: u64) -> anyhow::Result<Vec<EventMessage>> {
@@ -328,10 +368,15 @@ mod tests {
     async fn linear_chain_publishes_in_order_and_saves_cursor() {
         let chain = FakeChain::default();
         chain.install(&fork_blocks(1, 3, 0, 0), 1, "A");
-        let mut ix = Indexer::resume(chain, RecordingSink::default(), MemStore::default(), 1).await.unwrap();
+        let mut ix = Indexer::resume(chain, RecordingSink::default(), MemStore::default(), 1)
+            .await
+            .unwrap();
 
         assert_eq!(ix.catch_up().await.unwrap(), 3);
-        assert_eq!(names(&ix.sink.events.lock().unwrap()), vec!["log:A-1-0", "log:A-2-0", "log:A-3-0"]);
+        assert_eq!(
+            names(&ix.sink.events.lock().unwrap()),
+            vec!["log:A-1-0", "log:A-2-0", "log:A-3-0"]
+        );
         assert_eq!(ix.store.load_cursor().await.unwrap().unwrap().number, 3);
     }
 
@@ -339,14 +384,28 @@ mod tests {
     async fn two_block_reorg_retracts_newest_first_before_new_logs() {
         let chain = FakeChain::default();
         chain.install(&fork_blocks(1, 4, 0, 0), 1, "A");
-        let mut ix = Indexer::resume(chain, RecordingSink::default(), MemStore::default(), 1).await.unwrap();
+        let mut ix = Indexer::resume(chain, RecordingSink::default(), MemStore::default(), 1)
+            .await
+            .unwrap();
         ix.catch_up().await.unwrap();
 
         // Fork B splits after block 2, so blocks 3 and 4 are replaced, and it extends to 5.
         ix.chain.install(&fork_blocks(3, 5, 1, 0), 1, "B");
-        ix.chain.blocks.lock().unwrap().insert(3, fork_blocks(3, 3, 1, 0)[0]);
-        ix.chain.blocks.lock().unwrap().insert(4, fork_blocks(4, 4, 1, 0)[0]);
-        ix.chain.blocks.lock().unwrap().insert(5, fork_blocks(5, 5, 1, 0)[0]);
+        ix.chain
+            .blocks
+            .lock()
+            .unwrap()
+            .insert(3, fork_blocks(3, 3, 1, 0)[0]);
+        ix.chain
+            .blocks
+            .lock()
+            .unwrap()
+            .insert(4, fork_blocks(4, 4, 1, 0)[0]);
+        ix.chain
+            .blocks
+            .lock()
+            .unwrap()
+            .insert(5, fork_blocks(5, 5, 1, 0)[0]);
         // Blocks 3 and 4 on fork B must link to block 2 of fork A (hash(2, 0)).
         {
             let mut b = ix.chain.blocks.lock().unwrap();
@@ -380,7 +439,9 @@ mod tests {
         chain.install(&fork_blocks(1, 5, 0, 0), 1, "A");
         let store = MemStore::default();
         {
-            let mut ix = Indexer::resume(chain, RecordingSink::default(), store, 1).await.unwrap();
+            let mut ix = Indexer::resume(chain, RecordingSink::default(), store, 1)
+                .await
+                .unwrap();
             // Index only blocks 1..=3, as if the process stopped there.
             ix.next = 1;
             for n in 1..=3 {
@@ -389,7 +450,9 @@ mod tests {
             }
             // Move the store and the chain into the restarted indexer.
             let Indexer { chain, store, .. } = ix;
-            let mut restarted = Indexer::resume(chain, RecordingSink::default(), store, 1).await.unwrap();
+            let mut restarted = Indexer::resume(chain, RecordingSink::default(), store, 1)
+                .await
+                .unwrap();
             assert_eq!(restarted.next, 4);
             restarted.catch_up().await.unwrap();
             assert_eq!(

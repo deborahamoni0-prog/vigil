@@ -32,12 +32,34 @@ pub enum MessageKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PoolEvent {
-    CollateralDeposited { user: Address, asset: Address, amount: U256 },
-    CollateralWithdrawn { user: Address, asset: Address, amount: U256 },
-    CollateralEnabled { user: Address, asset: Address },
-    CollateralDisabled { user: Address, asset: Address },
-    Borrowed { user: Address, amount: U256, scaled: U256 },
-    Repaid { user: Address, amount: U256, scaled: U256 },
+    CollateralDeposited {
+        user: Address,
+        asset: Address,
+        amount: U256,
+    },
+    CollateralWithdrawn {
+        user: Address,
+        asset: Address,
+        amount: U256,
+    },
+    CollateralEnabled {
+        user: Address,
+        asset: Address,
+    },
+    CollateralDisabled {
+        user: Address,
+        asset: Address,
+    },
+    Borrowed {
+        user: Address,
+        amount: U256,
+        scaled: U256,
+    },
+    Repaid {
+        user: Address,
+        amount: U256,
+        scaled: U256,
+    },
     Liquidated {
         borrower: Address,
         liquidator: Address,
@@ -46,9 +68,14 @@ pub enum PoolEvent {
         scaled_repaid: U256,
         seized: U256,
     },
-    BadDebt { borrower: Address, scaled_debt: U256 },
+    BadDebt {
+        borrower: Address,
+        scaled_debt: U256,
+    },
     /// Logs the Risk Engine does not act on, kept so the stream is complete (for gap checks).
-    Other { name: String },
+    Other {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

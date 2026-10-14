@@ -20,13 +20,22 @@ pub struct RpcTxChain {
 }
 
 impl RpcTxChain {
-    pub async fn connect(rpc_url: &str, signer: &KeystoreSigner, pool: Address) -> anyhow::Result<Self> {
+    pub async fn connect(
+        rpc_url: &str,
+        signer: &KeystoreSigner,
+        pool: Address,
+    ) -> anyhow::Result<Self> {
         let provider = ProviderBuilder::new()
             .wallet(signer.wallet())
             .connect_http(rpc_url.parse()?)
             .erased();
         let chain_id = provider.get_chain_id().await?;
-        Ok(Self { provider, address: signer.address(), pool, chain_id })
+        Ok(Self {
+            provider,
+            address: signer.address(),
+            pool,
+            chain_id,
+        })
     }
 }
 
@@ -50,11 +59,19 @@ impl TxChain for RpcTxChain {
     }
 
     async fn pending_nonce(&self) -> anyhow::Result<u64> {
-        Ok(self.provider.get_transaction_count(self.address).block_id(BlockId::pending()).await?)
+        Ok(self
+            .provider
+            .get_transaction_count(self.address)
+            .block_id(BlockId::pending())
+            .await?)
     }
 
     async fn latest_nonce(&self) -> anyhow::Result<u64> {
-        Ok(self.provider.get_transaction_count(self.address).block_id(BlockId::latest()).await?)
+        Ok(self
+            .provider
+            .get_transaction_count(self.address)
+            .block_id(BlockId::latest())
+            .await?)
     }
 
     async fn send(&self, req: &TxRequest) -> anyhow::Result<B256> {
@@ -98,7 +115,12 @@ impl TxChain for RpcTxChain {
 
     async fn auction_start(&self, borrower: Address) -> anyhow::Result<u64> {
         let pool = ILendingPool::new(self.pool, &self.provider);
-        Ok(pool.auctionStartOf(borrower).call().await?.try_into().unwrap_or(0))
+        Ok(pool
+            .auctionStartOf(borrower)
+            .call()
+            .await?
+            .try_into()
+            .unwrap_or(0))
     }
 
     async fn gas_price(&self) -> anyhow::Result<u128> {

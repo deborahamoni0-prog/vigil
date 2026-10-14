@@ -146,4 +146,3 @@ impl RiskStore for PgRiskStore {
         Ok(true)
     }
 }
-

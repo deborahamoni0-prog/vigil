@@ -29,6 +29,9 @@ impl KeystoreSigner {
 
 impl std::fmt::Debug for KeystoreSigner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("KeystoreSigner").field("address", &self.address()).field("key", &"<redacted>").finish()
+        f.debug_struct("KeystoreSigner")
+            .field("address", &self.address())
+            .field("key", &"<redacted>")
+            .finish()
     }
 }

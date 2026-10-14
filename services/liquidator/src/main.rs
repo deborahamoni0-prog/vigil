@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-use async_nats::jetstream::{self, consumer::pull, consumer::AckPolicy, consumer::DeliverPolicy, stream};
+use async_nats::jetstream::{
+    self, consumer::pull, consumer::AckPolicy, consumer::DeliverPolicy, stream,
+};
 use clap::{Parser, ValueEnum};
 use futures::StreamExt;
 use sqlx::postgres::PgPoolOptions;
@@ -58,13 +60,18 @@ async fn main() -> anyhow::Result<()> {
     let signer = KeystoreSigner::load(&args.keystore, &password)?;
     tracing::info!(?signer, "signer loaded");
 
-    let pool = PgPoolOptions::new().max_connections(5).connect(&args.database_url).await?;
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&args.database_url)
+        .await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
 
     let chain = RpcTxChain::connect(&args.rpc_url, &signer, deployment.pool).await?;
     let strategy: Box<dyn Strategy> = match args.strategy {
         StrategyKind::Immediate => Box::new(ImmediateStrike),
-        StrategyKind::Margin => Box::new(WaitForMargin { margin_bps: args.margin_bps }),
+        StrategyKind::Margin => Box::new(WaitForMargin {
+            margin_bps: args.margin_bps,
+        }),
     };
     let cfg = ExecutorConfig {
         pool: deployment.pool,

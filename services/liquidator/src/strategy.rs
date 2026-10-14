@@ -33,9 +33,13 @@ pub struct ImmediateStrike;
 impl Strategy for ImmediateStrike {
     fn decide(&self, _signal: &LiquidationSignal, market: &MarketView) -> Decision {
         if market.bonus_bps == 0 {
-            Decision::Wait { until_block: market.current_block + 1 }
+            Decision::Wait {
+                until_block: market.current_block + 1,
+            }
         } else {
-            Decision::Strike { repay: market.repay }
+            Decision::Strike {
+                repay: market.repay,
+            }
         }
     }
 }
@@ -57,14 +61,20 @@ impl WaitForMargin {
 impl Strategy for WaitForMargin {
     fn decide(&self, _signal: &LiquidationSignal, market: &MarketView) -> Decision {
         if market.repay.is_zero() {
-            return Decision::Skip { reason: "nothing to repay" };
+            return Decision::Skip {
+                reason: "nothing to repay",
+            };
         }
         let bonus = Self::bonus_value(market);
         let needed = market.gas_cost_debt * U256::from(self.margin_bps) / U256::from(10_000u64);
         if bonus >= needed && !bonus.is_zero() {
-            Decision::Strike { repay: market.repay }
+            Decision::Strike {
+                repay: market.repay,
+            }
         } else {
-            Decision::Wait { until_block: market.current_block + 1 }
+            Decision::Wait {
+                until_block: market.current_block + 1,
+            }
         }
     }
 }
@@ -96,22 +106,41 @@ mod tests {
     #[test]
     fn immediate_waits_for_a_bonus_then_strikes() {
         let s = ImmediateStrike;
-        assert_eq!(s.decide(&signal(), &market(0, 100, 1)), Decision::Wait { until_block: 11 });
-        assert_eq!(s.decide(&signal(), &market(50, 100, 1)), Decision::Strike { repay: U256::from(100) });
+        assert_eq!(
+            s.decide(&signal(), &market(0, 100, 1)),
+            Decision::Wait { until_block: 11 }
+        );
+        assert_eq!(
+            s.decide(&signal(), &market(50, 100, 1)),
+            Decision::Strike {
+                repay: U256::from(100)
+            }
+        );
     }
 
     #[test]
     fn margin_strategy_waits_until_bonus_beats_gas_with_margin() {
         let s = WaitForMargin { margin_bps: 12_000 };
         // repay 10_000 at 100 bps gives a bonus of 100. Gas 83 * 1.2 = 99.6, which is below 100.
-        assert!(matches!(s.decide(&signal(), &market(100, 10_000, 83)), Decision::Strike { .. }));
+        assert!(matches!(
+            s.decide(&signal(), &market(100, 10_000, 83)),
+            Decision::Strike { .. }
+        ));
         // Gas 85 * 1.2 = 102, which is above 100, so wait. Values avoid the integer-floor boundary.
-        assert!(matches!(s.decide(&signal(), &market(100, 10_000, 85)), Decision::Wait { .. }));
+        assert!(matches!(
+            s.decide(&signal(), &market(100, 10_000, 85)),
+            Decision::Wait { .. }
+        ));
     }
 
     #[test]
     fn margin_strategy_skips_when_nothing_to_repay() {
         let s = WaitForMargin { margin_bps: 12_000 };
-        assert_eq!(s.decide(&signal(), &market(100, 0, 1)), Decision::Skip { reason: "nothing to repay" });
+        assert_eq!(
+            s.decide(&signal(), &market(100, 0, 1)),
+            Decision::Skip {
+                reason: "nothing to repay"
+            }
+        );
     }
 }

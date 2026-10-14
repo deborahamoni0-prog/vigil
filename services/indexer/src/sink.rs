@@ -3,7 +3,9 @@
 
 use async_nats::jetstream::{self, stream};
 use async_trait::async_trait;
-use vigil_common::messages::{BlockMessage, EventMessage, MessageKind, STREAM_NAME, SUBJECT_BLOCKS, SUBJECT_EVENTS};
+use vigil_common::messages::{
+    BlockMessage, EventMessage, MessageKind, STREAM_NAME, SUBJECT_BLOCKS, SUBJECT_EVENTS,
+};
 
 use crate::engine::EventSink;
 
@@ -48,7 +50,10 @@ impl EventSink for NatsSink {
 
     async fn publish_block(&self, msg: &BlockMessage) -> anyhow::Result<()> {
         let mut headers = async_nats::HeaderMap::new();
-        headers.insert("Nats-Msg-Id", format!("block:{:#x}", msg.block_hash).as_str());
+        headers.insert(
+            "Nats-Msg-Id",
+            format!("block:{:#x}", msg.block_hash).as_str(),
+        );
         headers.insert("trace-id", msg.trace_id.as_str());
         let payload = serde_json::to_vec(msg)?;
         self.js

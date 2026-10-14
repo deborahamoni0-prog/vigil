@@ -144,8 +144,16 @@ pub fn compound_factor(r_per_sec: U256, t: U256) -> Result<U256, MathError> {
     let one = U256::from(1);
     let two = U256::from(2);
     let three = U256::from(3);
-    let k2 = if t >= two { t * (t - one) / two } else { U256::ZERO };
-    let k3 = if t >= three { t * (t - one) * (t - two) / U256::from(6) } else { U256::ZERO };
+    let k2 = if t >= two {
+        t * (t - one) / two
+    } else {
+        U256::ZERO
+    };
+    let k3 = if t >= three {
+        t * (t - one) * (t - two) / U256::from(6)
+    } else {
+        U256::ZERO
+    };
     let sum = RAY
         .checked_add(term1)
         .and_then(|v| v.checked_add(r2.checked_mul(k2)?))
@@ -179,7 +187,10 @@ mod tests {
 
     #[test]
     fn division_by_zero_is_an_error() {
-        assert_eq!(wad_div_down(WAD, U256::ZERO), Err(MathError::DivisionByZero));
+        assert_eq!(
+            wad_div_down(WAD, U256::ZERO),
+            Err(MathError::DivisionByZero)
+        );
     }
 
     #[test]
@@ -202,8 +213,14 @@ mod tests {
             optimal_util: u(8e26 as u128),
         };
         assert_eq!(annual_borrow_rate(&p, U256::ZERO).unwrap(), p.base_rate);
-        assert_eq!(annual_borrow_rate(&p, p.optimal_util).unwrap(), p.base_rate + p.slope1);
-        assert_eq!(annual_borrow_rate(&p, RAY).unwrap(), p.base_rate + p.slope1 + p.slope2);
+        assert_eq!(
+            annual_borrow_rate(&p, p.optimal_util).unwrap(),
+            p.base_rate + p.slope1
+        );
+        assert_eq!(
+            annual_borrow_rate(&p, RAY).unwrap(),
+            p.base_rate + p.slope1 + p.slope2
+        );
     }
 
     #[test]
@@ -214,7 +231,14 @@ mod tests {
         // relative, since the next term is (rt)^4 / 24. Bound the error at 1e-5, which is the
         // approximation's true limit. Parity with the contract is tested separately.
         let expected = u(1_105_170_918_075_648_000_000_000_000);
-        let diff = if f > expected { f - expected } else { expected - f };
-        assert!(diff * U256::from(100_000) < expected, "factor {f} too far from e^0.1");
+        let diff = if f > expected {
+            f - expected
+        } else {
+            expected - f
+        };
+        assert!(
+            diff * U256::from(100_000) < expected,
+            "factor {f} too far from e^0.1"
+        );
     }
 }

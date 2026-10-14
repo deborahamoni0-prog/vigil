@@ -3,7 +3,12 @@
 use std::sync::Arc;
 
 use alloy::primitives::Address;
-use axum::{extract::{Path, State}, http::StatusCode, routing::get, Json, Router};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    routing::get,
+    Json, Router,
+};
 use serde::Serialize;
 use tokio::sync::Mutex;
 
@@ -34,7 +39,9 @@ async fn snapshot<S: RiskStore + 'static>(
     State(state): State<Arc<ApiState<S>>>,
     Path(borrower): Path<String>,
 ) -> Result<Json<Snapshot>, (StatusCode, String)> {
-    let addr: Address = borrower.parse().map_err(|_| (StatusCode::BAD_REQUEST, "bad address".to_string()))?;
+    let addr: Address = borrower
+        .parse()
+        .map_err(|_| (StatusCode::BAD_REQUEST, "bad address".to_string()))?;
     let engine = state.engine.lock().await;
     let p = engine
         .store
@@ -49,7 +56,11 @@ async fn snapshot<S: RiskStore + 'static>(
         borrower: format!("{addr:#x}"),
         bitmap: p.bitmap,
         debt_scaled: p.debt_scaled.to_string(),
-        amounts: [p.amounts[0].to_string(), p.amounts[1].to_string(), p.amounts[2].to_string()],
+        amounts: [
+            p.amounts[0].to_string(),
+            p.amounts[1].to_string(),
+            p.amounts[2].to_string(),
+        ],
         health_factor: hf.map(|(h, _)| h.to_string()),
         as_of_block: hf.map(|(_, b)| b),
     }))
