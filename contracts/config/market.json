@@ -1,0 +1,14 @@
+{
+  "_comment": "Market inputs for the local deployment and the acceptance scenario. Prices are integer cents of USD. Values here are placeholders until real figures are supplied. Collaterals are listed in bit order (0, 1, 2).",
+  "debt": { "priceCents": 100 },
+  "collaterals": [
+    { "name": "fee", "priceCents": 200000 },
+    { "name": "six", "priceCents": 200 },
+    { "name": "eight", "priceCents": 6000000 }
+  ],
+  "crash": {
+    "dropPercent": 25,
+    "reorgPricesCents": [160000, 200, 4000000]
+  },
+  "borrowers": []
+}

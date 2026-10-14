@@ -1,0 +1,127 @@
+# One command: `docker compose up --build`. Starts anvil, deploys and seeds the contracts,
+# then starts the Indexer, Risk Engine and Liquidator. The scenario runs under the `scenario` profile.
+name: vigil
+
+x-service-env: &service-env
+  RPC_URL: http://anvil:8545
+  DEPLOYMENT_FILE: /deployments/31337.json
+  DATABASE_URL: postgres://vigil@postgres:5432/vigil
+  NATS_URL: nats://nats:4222
+  RUST_LOG: info
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: vigil
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: vigil
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigil -d vigil"]
+      interval: 2s
+      retries: 30
+
+  nats:
+    image: nats:2.10
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 2s
+      retries: 30
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint: ["anvil", "--host", "0.0.0.0", "--port", "8545", "--block-time", "1"]
+    healthcheck:
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://localhost:8545"]
+      interval: 2s
+      retries: 30
+
+  # Deploys the contracts, writes deployments/31337.json, and imports the Liquidator keystore.
+  deploy:
+    image: ghcr.io/foundry-rs/foundry:latest
+    depends_on:
+      anvil:
+        condition: service_healthy
+    working_dir: /work/contracts
+    volumes:
+      - ./contracts:/work/contracts
+      - deployments:/deployments
+      - keystore:/keystore
+    environment:
+      KEYSTORE_PASSWORD: ${KEYSTORE_PASSWORD:-vigil-dev-password}
+    entrypoint: ["/bin/sh", "-c"]
+    # The Liquidator key is a published test key derived from a label. Never use it on a real network.
+    command:
+      - >-
+        forge script script/Deploy.s.sol --rpc-url http://anvil:8545 --broadcast --skip-simulation &&
+        cp deployments/31337.json /deployments/31337.json &&
+        cast send 0xbA44b71F3a929a49471E838B096799ACDC1e4519 --value 10ether --rpc-url http://anvil:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 >/dev/null &&
+        cast wallet import liquidator --private-key 0x17434229bbf83c2af514f3f88753b5616e42f446f3bd6a5d66a050f1361fde69 --keystore-dir /keystore --unsafe-password "$$KEYSTORE_PASSWORD" &&
+        mv /keystore/liquidator /keystore/liquidator.json
+    restart: "no"
+
+  indexer:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        BIN: vigil-indexer
+    depends_on:
+      deploy:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      <<: *service-env
+    volumes:
+      - deployments:/deployments:ro
+
+  risk-engine:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        BIN: vigil-risk-engine
+    depends_on:
+      deploy:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      <<: *service-env
+      HTTP_ADDR: 0.0.0.0:8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - deployments:/deployments:ro
+
+  liquidator:
+    build:
+      context: .
+      dockerfile: services/Dockerfile
+      args:
+        BIN: vigil-liquidator
+    depends_on:
+      deploy:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      <<: *service-env
+      KEYSTORE_PATH: /keystore/liquidator.json
+      KEYSTORE_PASSWORD: ${KEYSTORE_PASSWORD:-vigil-dev-password}
+    restart: unless-stopped
+    volumes:
+      - deployments:/deployments:ro
+      - keystore:/keystore:ro
+
+volumes:
+  deployments:
+  keystore:

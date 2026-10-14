@@ -1,0 +1,377 @@
+{
+  "storage": [
+    {
+      "astId": 6374,
+      "contract": "test/StorageProbe.sol:StorageProbe",
+      "label": "probe",
+      "offset": 0,
+      "slot": "0",
+      "type": "t_struct(PoolStorage)2449_storage"
+    }
+  ],
+  "types": {
+    "t_address": {
+      "encoding": "inplace",
+      "label": "address",
+      "numberOfBytes": "20"
+    },
+    "t_bool": {
+      "encoding": "inplace",
+      "label": "bool",
+      "numberOfBytes": "1"
+    },
+    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(address => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_address,t_uint256)"
+    },
+    "t_mapping(t_address,t_mapping(t_uint256,t_uint256))": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => mapping(uint256 => uint256))",
+      "numberOfBytes": "32",
+      "value": "t_mapping(t_uint256,t_uint256)"
+    },
+    "t_mapping(t_address,t_struct(CollateralConfig)2366_storage)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => struct LendingPool.CollateralConfig)",
+      "numberOfBytes": "32",
+      "value": "t_struct(CollateralConfig)2366_storage"
+    },
+    "t_mapping(t_address,t_struct(Position)2371_storage)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => struct LendingPool.Position)",
+      "numberOfBytes": "32",
+      "value": "t_struct(Position)2371_storage"
+    },
+    "t_mapping(t_address,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_address",
+      "label": "mapping(address => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_mapping(t_uint256,t_address)": {
+      "encoding": "mapping",
+      "key": "t_uint256",
+      "label": "mapping(uint256 => address)",
+      "numberOfBytes": "32",
+      "value": "t_address"
+    },
+    "t_mapping(t_uint256,t_uint256)": {
+      "encoding": "mapping",
+      "key": "t_uint256",
+      "label": "mapping(uint256 => uint256)",
+      "numberOfBytes": "32",
+      "value": "t_uint256"
+    },
+    "t_struct(CollateralConfig)2366_storage": {
+      "encoding": "inplace",
+      "label": "struct LendingPool.CollateralConfig",
+      "numberOfBytes": "32",
+      "members": [
+        {
+          "astId": 2357,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "listed",
+          "offset": 0,
+          "slot": "0",
+          "type": "t_bool"
+        },
+        {
+          "astId": 2359,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "decimals",
+          "offset": 1,
+          "slot": "0",
+          "type": "t_uint8"
+        },
+        {
+          "astId": 2361,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "bitIndex",
+          "offset": 2,
+          "slot": "0",
+          "type": "t_uint8"
+        },
+        {
+          "astId": 2363,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "liqThresholdBps",
+          "offset": 3,
+          "slot": "0",
+          "type": "t_uint16"
+        },
+        {
+          "astId": 2365,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "liqBonusBps",
+          "offset": 5,
+          "slot": "0",
+          "type": "t_uint16"
+        }
+      ]
+    },
+    "t_struct(PoolStorage)2449_storage": {
+      "encoding": "inplace",
+      "label": "struct LendingPool.PoolStorage",
+      "numberOfBytes": "672",
+      "members": [
+        {
+          "astId": 2387,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "debtAsset",
+          "offset": 0,
+          "slot": "0",
+          "type": "t_address"
+        },
+        {
+          "astId": 2389,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "debtDecimals",
+          "offset": 20,
+          "slot": "0",
+          "type": "t_uint8"
+        },
+        {
+          "astId": 2391,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "paused",
+          "offset": 21,
+          "slot": "0",
+          "type": "t_bool"
+        },
+        {
+          "astId": 2393,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "oracle",
+          "offset": 0,
+          "slot": "1",
+          "type": "t_address"
+        },
+        {
+          "astId": 2395,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "lastAccrual",
+          "offset": 20,
+          "slot": "1",
+          "type": "t_uint64"
+        },
+        {
+          "astId": 2398,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "rates",
+          "offset": 0,
+          "slot": "2",
+          "type": "t_struct(RateParams)6009_storage"
+        },
+        {
+          "astId": 2400,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "reserveFactor",
+          "offset": 0,
+          "slot": "6",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 2402,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "dustDebt",
+          "offset": 0,
+          "slot": "7",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 2404,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "supplyIndex",
+          "offset": 0,
+          "slot": "8",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 2406,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "debtIndex",
+          "offset": 0,
+          "slot": "9",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 2408,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "totalSupplyScaled",
+          "offset": 0,
+          "slot": "10",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 2410,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "totalDebtScaled",
+          "offset": 0,
+          "slot": "11",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 2412,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "reserves",
+          "offset": 0,
+          "slot": "12",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 2414,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "deficit",
+          "offset": 0,
+          "slot": "13",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 2418,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "collateralByMask",
+          "offset": 0,
+          "slot": "14",
+          "type": "t_mapping(t_uint256,t_address)"
+        },
+        {
+          "astId": 2423,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "collateral",
+          "offset": 0,
+          "slot": "15",
+          "type": "t_mapping(t_address,t_struct(CollateralConfig)2366_storage)"
+        },
+        {
+          "astId": 2427,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "supplyScaled",
+          "offset": 0,
+          "slot": "16",
+          "type": "t_mapping(t_address,t_uint256)"
+        },
+        {
+          "astId": 2432,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "positions",
+          "offset": 0,
+          "slot": "17",
+          "type": "t_mapping(t_address,t_struct(Position)2371_storage)"
+        },
+        {
+          "astId": 2438,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "collateralAmount",
+          "offset": 0,
+          "slot": "18",
+          "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))"
+        },
+        {
+          "astId": 2442,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "auctionStart",
+          "offset": 0,
+          "slot": "19",
+          "type": "t_mapping(t_address,t_uint256)"
+        },
+        {
+          "astId": 2448,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "nonceBitmap",
+          "offset": 0,
+          "slot": "20",
+          "type": "t_mapping(t_address,t_mapping(t_uint256,t_uint256))"
+        }
+      ]
+    },
+    "t_struct(Position)2371_storage": {
+      "encoding": "inplace",
+      "label": "struct LendingPool.Position",
+      "numberOfBytes": "64",
+      "members": [
+        {
+          "astId": 2368,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "collateralBitmap",
+          "offset": 0,
+          "slot": "0",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 2370,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "debtScaled",
+          "offset": 0,
+          "slot": "1",
+          "type": "t_uint256"
+        }
+      ]
+    },
+    "t_struct(RateParams)6009_storage": {
+      "encoding": "inplace",
+      "label": "struct InterestMath.RateParams",
+      "numberOfBytes": "128",
+      "members": [
+        {
+          "astId": 6002,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "baseRate",
+          "offset": 0,
+          "slot": "0",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 6004,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "slope1",
+          "offset": 0,
+          "slot": "1",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 6006,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "slope2",
+          "offset": 0,
+          "slot": "2",
+          "type": "t_uint256"
+        },
+        {
+          "astId": 6008,
+          "contract": "test/StorageProbe.sol:StorageProbe",
+          "label": "optimalUtil",
+          "offset": 0,
+          "slot": "3",
+          "type": "t_uint256"
+        }
+      ]
+    },
+    "t_uint16": {
+      "encoding": "inplace",
+      "label": "uint16",
+      "numberOfBytes": "2"
+    },
+    "t_uint256": {
+      "encoding": "inplace",
+      "label": "uint256",
+      "numberOfBytes": "32"
+    },
+    "t_uint64": {
+      "encoding": "inplace",
+      "label": "uint64",
+      "numberOfBytes": "8"
+    },
+    "t_uint8": {
+      "encoding": "inplace",
+      "label": "uint8",
+      "numberOfBytes": "1"
+    }
+  }
+}

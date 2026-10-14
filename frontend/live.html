@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vigil · live pipeline</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .flow { display:grid; grid-template-columns: repeat(auto-fit, minmax(190px,1fr)); gap:10px; padding:16px 20px; align-items:stretch; }
+    .stage { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; position:relative; }
+    .stage.flash { border-color:var(--accent); box-shadow:0 0 0 2px rgba(106,169,255,.25); }
+    .stage h3 { margin:0 0 4px; font-size:14px; color:var(--text); text-transform:none; letter-spacing:0; }
+    .stage .src { font-family: ui-monospace, Menlo, monospace; font-size:11px; color:var(--muted); word-break:break-all; }
+    .stage .what { font-size:12px; color:var(--muted); margin:6px 0; }
+    .stage .big { font-size:22px; font-variant-numeric: tabular-nums; }
+    .stage dl { grid-template-columns: max-content 1fr; font-size:12px; }
+    .arrow { align-self:center; text-align:center; color:var(--muted); font-size:18px; }
+    .cols { display:grid; grid-template-columns: 1fr 1fr; gap:16px; padding:0 20px 16px; }
+    @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+    .feed { max-height:420px; overflow:auto; font-family: ui-monospace, Menlo, monospace; font-size:12px; }
+    .feed .row { border-bottom:1px solid var(--line); padding:6px 0; }
+    .feed .tag { display:inline-block; min-width:110px; color:var(--accent); }
+    .feed pre { margin:4px 0 0; padding:6px; font-size:11px; max-height:160px; }
+    nav a { color:var(--accent); margin-right:14px; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Vigil · live pipeline</h1>
+    <nav><a href="live.html">live</a><a href="markets.html">actions</a></nav>
+    <div class="status">
+      <span id="conn" class="pill">connecting…</span>
+      <span id="head" class="pill muted">head –</span>
+      <span id="frozenPill" class="pill muted">oracle –</span>
+    </div>
+  </header>
+
+  <p class="small muted" style="padding:10px 20px 0;margin:0">
+    Each box is one stage of the system, lit when it handles a message. Numbers come from the running services, not from the page. The source line shows which function does the work.
+  </p>
+
+  <div class="flow" id="flow">
+    <div class="stage" id="st-chain">
+      <h3>1 · Chain (anvil + pool + oracle)</h3>
+      <div class="src">contracts/src/LendingPool.sol · OracleAdapter.sol</div>
+      <div class="what">The pool holds the state, and the oracle decides prices. Read every block.</div>
+      <div class="big" id="c-head">–</div>
+      <dl><dt>Oracle</dt><dd id="c-frozen">–</dd><dt>Debt index</dt><dd id="c-idx">–</dd><dt>Total debt (scaled)</dt><dd id="c-debt">–</dd><dt>Deficit</dt><dd id="c-def">–</dd></dl>
+      <div class="small" id="c-prices"></div>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage" id="st-indexer">
+      <h3>2 · Indexer</h3>
+      <div class="src">services/indexer/src/engine.rs · apply_block / handle_reorg</div>
+      <div class="what">Reads each block and its logs, decodes them, publishes them to NATS. On a reorg it retracts orphaned logs first.</div>
+      <div class="big" id="i-cursor">–</div>
+      <dl><dt>Cursor (block)</dt><dd id="i-cur2">–</dd><dt>Lag (blocks)</dt><dd id="i-lag">–</dd><dt>Reorgs seen</dt><dd id="i-reorg">0</dd><dt>Retracts published</dt><dd id="i-retract">0</dd></dl>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage" id="st-nats">
+      <h3>3 · NATS JetStream</h3>
+      <div class="src">subjects vigil.events · vigil.blocks · vigil.signals</div>
+      <div class="what">Durable message bus. Messages carry idempotency keys, so a replay is harmless.</div>
+      <div class="big" id="n-total">0</div>
+      <dl><dt>events</dt><dd id="n-events">0</dd><dt>blocks</dt><dd id="n-blocks">0</dd><dt>signals</dt><dd id="n-signals">0</dd></dl>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage" id="st-risk">
+      <h3>4 · Risk engine</h3>
+      <div class="src">services/risk-engine/src/engine.rs · handle_event / handle_block</div>
+      <div class="what">Applies each event to positions exactly once, undoes it on retraction, and signals unhealthy positions when the oracle is normal.</div>
+      <div class="big" id="r-pos">–</div>
+      <dl><dt>Borrowing positions</dt><dd id="r-pos2">–</dd><dt>Processed events</dt><dd id="r-proc">–</dd><dt>Signals emitted</dt><dd id="r-sig">0</dd></dl>
+    </div>
+    <div class="arrow">→</div>
+
+    <div class="stage" id="st-liq">
+      <h3>5 · Liquidator</h3>
+      <div class="src">services/liquidator/src/executor.rs · handle_signal / tick · nonce.rs</div>
+      <div class="what">On a signal, re-checks health on chain, starts an auction, then strikes when the strategy says so. Replaces stuck transactions and keeps nonces gap-free.</div>
+      <div class="big" id="l-txs">–</div>
+      <dl><dt>Transactions sent</dt><dd id="l-sent">–</dd><dt>Intents on file</dt><dd id="l-int">–</dd><dt>Signals acted on</dt><dd id="l-acted">0</dd></dl>
+    </div>
+  </div>
+
+  <div class="cols">
+    <section class="card">
+      <h2>Live messages</h2>
+      <div class="feed" id="feed"></div>
+    </section>
+    <section class="card">
+      <h2>Follow a borrower</h2>
+      <div class="row">
+        <input id="who" placeholder="0x borrower address" style="flex:1" />
+      </div>
+      <div id="whoPos" class="small"></div>
+      <h3>Its messages through the pipeline</h3>
+      <div class="feed" id="trace"></div>
+      <h3>Liquidator transactions</h3>
+      <table><thead><tr><th>nonce</th><th>kind</th><th>status</th><th>sent block</th></tr></thead><tbody id="liqRows"></tbody></table>
+    </section>
+  </div>
+
+  <script type="module" src="live.js"></script>
+</body>
+</html>

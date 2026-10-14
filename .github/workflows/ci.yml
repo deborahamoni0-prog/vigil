@@ -1,0 +1,59 @@
+# Runs on every pull request. Contract and service gates match section 7 of the MVP brief.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Build
+        run: forge build --sizes
+        working-directory: contracts
+      - name: Test (invariants at 256 runs x depth 100)
+        run: forge test
+        working-directory: contracts
+      - name: Gas snapshot is current
+        run: forge snapshot --check
+        working-directory: contracts
+      - name: Storage layout matches baseline (SC-02)
+        run: scripts/check-storage-layout.sh
+
+  services:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vigil
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: vigil
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vigil" --health-interval 2s --health-retries 30
+    env:
+      DATABASE_URL: postgres://vigil@127.0.0.1:5432/vigil
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspace: services
+      - name: Format
+        run: cargo fmt --all --check
+        working-directory: services
+      - name: Clippy (warnings are errors)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+        working-directory: services
+      - name: Test
+        run: cargo test --workspace
+        working-directory: services

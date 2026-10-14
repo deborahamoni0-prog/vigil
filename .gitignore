@@ -1,0 +1,16 @@
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+contracts/deployments/31337.json
+
+# Rust
+services/target/
+
+# Secrets and runtime state. Never commit keystores or passwords.
+keystore/
+*.keystore
+.env
+logs/
+scenario-report.json

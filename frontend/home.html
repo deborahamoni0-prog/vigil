@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vigil · Lending you can see</title>
+  <meta name="description" content="Supply collateral, borrow against it, and watch every position update live from the chain." />
+  <style>
+    :root {
+      --bg: #141419;
+      --bg-2: #1b1b22;
+      --surface: #1f1f27;
+      --surface-2: #272731;
+      --border: #2d2d39;
+      --text: #f3f2f8;
+      --text-2: #d2d0e0;
+      --muted: #9897ab;
+      --primary: #a293ff;
+      --primary-hover: #b8acff;
+      --primary-soft: rgba(162, 147, 255, .14);
+      --supply: #6fd6e0;
+      --ok: #6fd6e0;
+      --warn: #e9b44c;
+      --bad: #ff7b72;
+      --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+    a { color: inherit; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+    .muted { color: var(--muted); }
+    .eyebrow { display: inline-flex; align-items: center; gap: 10px; color: var(--primary); font-size: 14px; font-weight: 600; letter-spacing: .2px; }
+    .eyebrow::before { content: ""; width: 22px; height: 2px; background: var(--primary); border-radius: 2px; }
+
+    /* ================= Header ================= */
+    .nav { position: sticky; top: 0; z-index: 20; background: rgba(20,20,25,.78); backdrop-filter: blur(14px); border-bottom: 1px solid transparent; transition: border-color .3s; }
+    .nav .wrap { display: flex; align-items: center; gap: 36px; height: 80px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; text-decoration: none; letter-spacing: -.3px; }
+    .logo { width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: #14131f; display: grid; place-items: center; font-weight: 800; font-size: 15px; }
+    .links { display: flex; gap: 28px; font-size: 15px; color: var(--muted); }
+    .links a { text-decoration: none; transition: color .2s; }
+    .links a:hover { color: var(--text); }
+    .spacer { flex: 1; }
+    .pill { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 13px 26px; border-radius: 999px; font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; border: 1px solid transparent; cursor: pointer; transition: transform .15s, background .2s, border-color .2s, box-shadow .2s; }
+    .pill.solid { background: var(--primary); color: #14131f; }
+    .pill.solid:hover { background: var(--primary-hover); box-shadow: 0 10px 30px -10px rgba(162,147,255,.6); transform: translateY(-1px); }
+    .pill.ghost { background: transparent; color: var(--text); border-color: var(--border); }
+    .pill.ghost:hover { border-color: var(--primary); color: var(--primary); }
+    .pill:active { transform: scale(.97); }
+    .live-chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; color: var(--muted); font-family: var(--mono); }
+    .live-chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: ping 2.2s infinite; }
+    @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(111,214,224,.55); } 70%,100% { box-shadow: 0 0 0 9px rgba(111,214,224,0); } }
+
+    /* ================= Hero ================= */
+    .hero { position: relative; padding: 140px 0 120px; text-align: center; overflow: hidden; }
+    .hero::before {
+      content: ""; position: absolute; left: 50%; top: -160px; width: 1100px; height: 720px; transform: translateX(-50%);
+      background: radial-gradient(closest-side, rgba(162,147,255,.32), rgba(162,147,255,.08) 55%, transparent 75%);
+      filter: blur(20px); pointer-events: none;
+    }
+    .hero .wrap { position: relative; }
+    .hero h1 { font-size: clamp(48px, 7vw, 88px); line-height: 1.02; font-weight: 700; letter-spacing: -2.8px; margin: 26px auto 0; max-width: 980px; }
+    .hero h1 em { font-style: normal; color: var(--primary); }
+    .hero p.lead { font-size: 21px; color: var(--muted); max-width: 640px; margin: 28px auto 0; line-height: 1.55; }
+    .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 44px; }
+    .hero-stats { display: flex; justify-content: center; gap: 56px; margin-top: 72px; flex-wrap: wrap; }
+    .hero-stat .v { font-family: var(--mono); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
+    .hero-stat .l { color: var(--muted); font-size: 14px; margin-top: 4px; }
+
+    /* ================= Phones ================= */
+    .phones { display: flex; justify-content: center; align-items: flex-end; gap: 28px; margin-top: 110px; }
+    .phone { position: relative; width: 290px; height: 590px; border-radius: 48px; background: #0c0c10; padding: 12px; box-shadow: 0 60px 120px -40px rgba(0,0,0,.8), inset 0 0 0 2px #3a3a46; flex: none; }
+    .phone.center { transform: translateY(-40px); }
+    .phone .screen { width: 100%; height: 100%; border-radius: 38px; background: var(--bg-2); padding: 56px 20px 22px; text-align: left; overflow: hidden; position: relative; }
+    .phone .notch { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 92px; height: 26px; border-radius: 20px; background: #000; }
+    .phone .app-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; color: var(--text-2); display: flex; justify-content: space-between; align-items: center; }
+    .phone .app-title span { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+    .phone .big { font-family: var(--mono); font-size: 32px; font-weight: 600; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+    .phone .tag { display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 999px; background: rgba(111,214,224,.14); color: var(--ok); font-size: 12px; font-weight: 600; }
+    .phone .card { background: var(--surface); border-radius: 18px; padding: 14px 16px; margin-top: 14px; }
+    .phone .card .k { color: var(--muted); font-size: 12px; }
+    .phone .card .v { font-family: var(--mono); font-size: 17px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .phone .bars { display: flex; align-items: flex-end; gap: 6px; height: 140px; margin-top: 18px; }
+    .phone .bars i { flex: 1; border-radius: 6px 6px 2px 2px; background: linear-gradient(180deg, var(--primary), rgba(162,147,255,.25)); }
+    .phone .btn-ph { margin-top: 18px; width: 100%; padding: 13px; border-radius: 999px; background: var(--primary); color: #14131f; font-weight: 600; text-align: center; font-size: 15px; }
+    .phone .ring { width: 124px; height: 124px; margin: 18px auto 4px; position: relative; }
+    .phone .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .phone .ring .c { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--mono); font-weight: 700; font-size: 22px; }
+    .phone .asset { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 14px; }
+    .phone .asset .dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #14131f; flex: none; }
+    .phone .asset .amt { margin-left: auto; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    @media (max-width: 920px) { .phones { flex-direction: column; align-items: center; margin-top: 80px; } .phone.center { transform: none; } }
+
+    /* ================= Sections ================= */
+    section.block { padding: 150px 0; }
+    section.block + section.block { border-top: 1px solid var(--border); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 90px; align-items: center; }
+    .split.flip .copy { order: 2; }
+    @media (max-width: 900px) { .split { grid-template-columns: 1fr; gap: 56px; } .split.flip .copy { order: 0; } }
+    .copy h2 { font-size: clamp(36px, 4.4vw, 56px); line-height: 1.08; letter-spacing: -1.6px; font-weight: 700; margin: 22px 0 0; }
+    .copy p { color: var(--muted); font-size: 18px; margin: 24px 0 0; max-width: 520px; }
+    .copy ul { list-style: none; padding: 0; margin: 32px 0 0; display: grid; gap: 16px; }
+    .copy li { display: flex; gap: 14px; color: var(--text-2); font-size: 17px; }
+    .copy li::before { content: ""; width: 10px; height: 10px; flex: none; margin-top: 9px; border-radius: 50%; background: var(--primary); }
+    .copy .pill { margin-top: 40px; }
+    .panel { background: linear-gradient(180deg, var(--surface), var(--bg-2)); border: 1px solid var(--border); border-radius: 32px; padding: 40px; }
+    .panel .kv { display: flex; justify-content: space-between; padding: 20px 0; border-bottom: 1px solid var(--border); font-size: 16px; }
+    .panel .kv:last-of-type { border-bottom: 0; }
+    .panel .kv span:first-child { color: var(--muted); }
+    .panel .kv b { font-family: var(--mono); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .meter { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-top: 28px; }
+    .meter div { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--primary), #6fd6e0); transition: width .8s ease; }
+    .label-row { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); margin-top: 12px; }
+
+    /* ================= Steps ================= */
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 80px; }
+    @media (max-width: 900px) { .steps { grid-template-columns: 1fr; } }
+    .step { background: var(--surface); border: 1px solid var(--border); border-radius: 28px; padding: 40px 36px; transition: transform .25s, border-color .25s; }
+    .step:hover { transform: translateY(-4px); border-color: rgba(162,147,255,.5); }
+    .step .n { width: 46px; height: 46px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); display: grid; place-items: center; font-weight: 700; font-family: var(--mono); }
+    .step h3 { font-size: 22px; margin: 26px 0 0; letter-spacing: -.4px; }
+    .step p { color: var(--muted); font-size: 16px; margin: 12px 0 0; }
+    .heading { font-size: clamp(36px, 4.4vw, 56px); line-height: 1.08; letter-spacing: -1.6px; font-weight: 700; margin: 22px 0 0; max-width: 760px; }
+
+    /* ================= Stats band ================= */
+    .band { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .band > div { padding: 56px 24px; text-align: center; border-right: 1px solid var(--border); }
+    .band > div:last-child { border-right: 0; }
+    .band .v { font-family: var(--mono); font-size: 40px; font-weight: 600; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+    .band .l { color: var(--muted); margin-top: 8px; font-size: 15px; }
+    @media (max-width: 800px) { .band { grid-template-columns: 1fr 1fr; } .band > div:nth-child(2) { border-right: 0; } .band > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); } }
+
+    /* ================= Final call to action ================= */
+    .final { text-align: center; padding: 160px 0; }
+    .final h2 { font-size: clamp(40px, 5.4vw, 70px); line-height: 1.04; letter-spacing: -2px; font-weight: 700; margin: 0 auto; max-width: 900px; }
+    .final p { color: var(--muted); font-size: 19px; margin: 24px auto 0; max-width: 560px; }
+    .final .cta-row { margin-top: 48px; }
+
+    footer { border-top: 1px solid var(--border); padding: 56px 0 64px; color: var(--muted); font-size: 14px; }
+    footer .wrap { display: flex; flex-wrap: wrap; gap: 24px 48px; align-items: center; justify-content: space-between; }
+    footer a { text-decoration: none; }
+    footer a:hover { color: var(--text); }
+    footer nav { display: flex; gap: 26px; flex-wrap: wrap; }
+
+    @media (max-width: 720px) {
+      .nav .wrap { height: 70px; gap: 16px; }
+      .links { display: none; }
+      .hero { padding: 90px 0 80px; }
+      .hero-stats { gap: 32px; }
+      section.block { padding: 96px 0; }
+      .panel { padding: 28px; }
+      .final { padding: 110px 0; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+
+  <header class="nav">
+    <div class="wrap">
+      <a class="brand" href="index.html"><span class="logo">V</span> Vigil</a>
+      <nav class="links">
+        <a href="#how">How it works</a>
+        <a href="#features">Features</a>
+        <a href="live.html">Live pipeline</a>
+      </nav>
+      <div class="spacer"></div>
+      <span class="live-chip" id="chipBlock">connecting…</span>
+      <a class="pill solid" href="markets.html">Open app</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero -->
+    <section class="hero">
+      <div class="wrap">
+        <span class="eyebrow">Lending on a live chain</span>
+        <h1>Borrow and earn with <em>every number in view.</em></h1>
+        <p class="lead">Supply collateral, borrow vUSD against it, and repay to get your collateral back. Prices, health and rates update on every block.</p>
+        <div class="cta-row">
+          <a class="pill solid" href="markets.html">Start with markets</a>
+          <a class="pill ghost" href="live.html">Watch the pipeline</a>
+        </div>
+        <div class="hero-stats">
+          <div class="hero-stat"><div class="v" id="heroDebt">–</div><div class="l">vUSD borrowed</div></div>
+          <div class="hero-stat"><div class="v" id="heroBlock">–</div><div class="l">Latest block</div></div>
+          <div class="hero-stat"><div class="v" id="heroPrice">–</div><div class="l">Bitcoin price, from the oracle</div></div>
+        </div>
+
+        <!-- Phone mockups. The numbers are live, read from the gateway. -->
+        <div class="phones">
+          <div class="phone">
+            <div class="screen">
+              <div class="notch"></div>
+              <div class="app-title">Supply <span id="phBlock">block –</span></div>
+              <div class="big" id="phNet">$–</div>
+              <span class="tag">Net worth</span>
+              <div class="card">
+                <div class="asset"><span class="dot" style="background:#f08c2b">WE</span>Wrapped Ether<span class="amt" id="phEth">–</span></div>
+                <div class="asset"><span class="dot" style="background:#5a7bd9">WB</span>Wrapped Bitcoin<span class="amt" id="phBtc">–</span></div>
+              </div>
+              <div class="btn-ph">Supply</div>
+            </div>
+          </div>
+
+          <div class="phone center">
+            <div class="screen">
+              <div class="notch"></div>
+              <div class="app-title">Pool utilisation <span>live</span></div>
+              <div class="ring">
+                <svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.9" fill="none" stroke="#272731" stroke-width="3.2"/><circle id="phRing" cx="18" cy="18" r="15.9" fill="none" stroke="#6fd6e0" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="100 100"/></svg>
+                <div class="c" id="phHf">–</div>
+              </div>
+              <div class="card">
+                <div class="k">Borrow rate (APY)</div>
+                <div class="v" id="phApy">–</div>
+              </div>
+              <div class="card">
+                <div class="k">Supply APY</div>
+                <div class="v" id="phSApy">–</div>
+              </div>
+              <div class="btn-ph">Borrow vUSD</div>
+            </div>
+          </div>
+
+          <div class="phone">
+            <div class="screen">
+              <div class="notch"></div>
+              <div class="app-title">Activity <span id="phBlock2">block –</span></div>
+              <div class="bars"><i style="height:30%"></i><i style="height:55%"></i><i style="height:40%"></i><i style="height:70%"></i><i style="height:50%"></i><i style="height:85%"></i><i style="height:65%"></i></div>
+              <div class="card">
+                <div class="k">Total borrowed</div>
+                <div class="v" id="phDebt">–</div>
+              </div>
+              <div class="card">
+                <div class="k">Oracle</div>
+                <div class="v" id="phOracle">–</div>
+              </div>
+              <div class="btn-ph">Repay</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Supply -->
+    <section class="block" id="features">
+      <div class="wrap split">
+        <div class="copy">
+          <span class="eyebrow">Supply</span>
+          <h2>Put your collateral to work, and keep control of it.</h2>
+          <p>Deposit assets into the pool. They stay there until you take them out, and they count toward what you can borrow. Nothing is locked away in a vault you cannot see.</p>
+          <ul>
+            <li>Collateral is valued in USD by the protocol's own oracle.</li>
+            <li>Fee-on-transfer tokens are supported. The pool counts what it really receives.</li>
+            <li>Withdraw any time your health factor allows it.</li>
+          </ul>
+          <a class="pill solid" href="markets.html">Supply collateral</a>
+        </div>
+        <div class="panel">
+          <div class="kv"><span>Net worth</span><b id="pNet">–</b></div>
+          <div class="kv"><span>Collateral assets</span><b>3</b></div>
+          <div class="kv"><span>Oracle</span><b id="pOracle">–</b></div>
+          <div class="kv"><span>Block</span><b id="pBlock">–</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Borrow -->
+    <section class="block">
+      <div class="wrap split flip">
+        <div class="copy">
+          <span class="eyebrow">Borrow</span>
+          <h2>Borrow vUSD against what you hold, with a clear limit.</h2>
+          <p>The more collateral you add, the more you can borrow. Your health factor tells you how safe you are. Above 1 is safe. At or below 1, the position can be liquidated.</p>
+          <ul>
+            <li>Rates rise as the pool fills up, so borrowing is cheap when there is spare liquidity.</li>
+            <li>A safety buffer keeps small price moves from putting you at risk.</li>
+            <li>See the health factor after your action before you confirm it.</li>
+          </ul>
+          <a class="pill ghost" href="markets.html">See borrow markets</a>
+        </div>
+        <div class="panel">
+          <div class="kv"><span>Borrow APY</span><b id="pApy">–</b></div>
+          <div class="kv"><span>Supply APY</span><b id="pSApy">–</b></div>
+          <div class="kv"><span>Pool utilisation</span><b id="pUtil">–</b></div>
+          <div class="meter"><div id="pMeter"></div></div>
+          <div class="label-row"><span>Share of supplied vUSD borrowed</span><span id="pMeterLabel">–</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="block" id="how">
+      <div class="wrap">
+        <span class="eyebrow">How it works</span>
+        <h2 class="heading">Three steps from wallet to borrowing.</h2>
+        <div class="steps">
+          <div class="step">
+            <div class="n">1</div>
+            <h3>Supply collateral</h3>
+            <p>Deposit an asset into the pool. It counts toward your borrowing power as soon as it lands.</p>
+          </div>
+          <div class="step">
+            <div class="n">2</div>
+            <h3>Borrow against it</h3>
+            <p>Borrow vUSD up to your limit. Your health factor updates with every block.</p>
+          </div>
+          <div class="step">
+            <div class="n">3</div>
+            <h3>Repay and get it back</h3>
+            <p>Repay everything, including interest, and every asset you supplied comes back to your wallet.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats band -->
+    <section style="padding: 0 0 150px">
+      <div class="wrap">
+        <div class="band">
+          <div><div class="v" id="bBorrowed">–</div><div class="l">vUSD borrowed</div></div>
+          <div><div class="v" id="bReserves">–</div><div class="l">Reserves</div></div>
+          <div><div class="v" id="bBad">–</div><div class="l">Bad debt</div></div>
+          <div><div class="v" id="bBlock">–</div><div class="l">Latest block</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Final call to action -->
+    <section class="final">
+      <div class="wrap">
+        <h2>Open the markets and see your position update live.</h2>
+        <p>This is a local test network. The tokens and money are for testing only.</p>
+        <div class="cta-row">
+          <a class="pill solid" href="markets.html">Open app</a>
+          <a class="pill ghost" href="live.html">Live pipeline</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>Vigil · local test network</span>
+      <nav>
+        <a href="markets.html">Markets</a>
+        <a href="live.html">Live pipeline</a>
+        <a href="#how">How it works</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    // Live numbers for the hero, the phones and the stats band. Read from the gateway every 3 seconds.
+    const RAY = 1e27;
+    const fmtUsd = (n) => "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+    const fmtNum = (n, d = 2) => Number(n).toLocaleString("en-US", { maximumFractionDigits: d });
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+
+    async function refresh() {
+      try {
+        const d = await (await fetch("/api/protocol")).json();
+        const debtIndex = Number(d.debtIndex) / RAY;
+        const totalBorrowed = (Number(d.totalDebtScaled) * debtIndex) / 1e6;
+        const reserves = Number(d.reserves) / 1e6;
+        const totalSupplied = (Number(d.totalSupplyScaled) * (Number(d.supplyIndex) / RAY)) / 1e6;
+        const util = totalSupplied > 0 ? (totalBorrowed / totalSupplied) * 100 : 0;
+
+        // Borrow APY, the same model as the contract (see frontend/app.js).
+        const r = d.rates || {};
+        const u = Math.min(util / 100, 1);
+        const base = Number(BigInt(r.baseRate)) / RAY;
+        const s1 = Number(BigInt(r.slope1)) / RAY;
+        const s2 = Number(BigInt(r.slope2)) / RAY;
+        const opt = Number(BigInt(r.optimalUtil)) / RAY;
+        const borrowRate = u <= opt ? base + (s1 * u) / opt : base + s1 + (s2 * (u - opt)) / (1 - opt);
+        const apy = Math.expm1(borrowRate) * 100;
+
+        const priceOf = (name) => {
+          const p = d.prices.find((x) => x.name === name);
+          return p && p.price_wad !== "frozen" ? Number(p.price_wad) / 1e18 : null;
+        };
+        const btcUsd = priceOf("eight");
+        const ethUsd = priceOf("fee");
+
+        set("chipBlock", "block " + d.head);
+        set("heroBlock", fmtNum(d.head, 0));
+        set("heroDebt", fmtNum(totalBorrowed, 0));
+        set("heroPrice", btcUsd ? fmtUsd(btcUsd) : "–");
+        set("phBlock", "block " + d.head);
+        set("phBlock2", "block " + d.head);
+        set("phDebt", fmtNum(totalBorrowed, 2) + " vUSD");
+        set("phOracle", d.frozen ? "Frozen" : "Normal");
+        set("pOracle", d.frozen ? "Frozen" : "Normal");
+        set("pBlock", fmtNum(d.head, 0));
+        set("phApy", apy.toFixed(2) + "%");
+        set("phSApy", (apy * (util / 100) * 0.9).toFixed(2) + "%");
+        set("pApy", apy.toFixed(2) + "%");
+        set("pSApy", (apy * (util / 100) * 0.9).toFixed(2) + "%");
+        set("pUtil", util.toFixed(1) + "%");
+        set("pMeterLabel", util.toFixed(1) + "%");
+        document.getElementById("pMeter").style.width = Math.min(util, 100) + "%";
+        document.getElementById("phRing").setAttribute("stroke-dasharray", Math.min(util, 100) + " 100");
+        set("phHf", fmtNum(util, 1) + "%");
+        set("bBorrowed", fmtNum(totalBorrowed, 0));
+        set("bReserves", fmtNum(reserves, 2));
+        set("bBad", Number(d.deficit) === 0 ? "0" : fmtNum(Number(d.deficit) / 1e6, 2));
+        set("bBlock", fmtNum(d.head, 0));
+        set("phEth", ethUsd ? fmtUsd(ethUsd) : "–");
+        set("phBtc", btcUsd ? fmtUsd(btcUsd) : "–");
+        set("phNet", btcUsd ? fmtUsd(btcUsd) : "$–");
+        set("pNet", btcUsd ? fmtUsd(btcUsd) : "–");
+      } catch (e) {
+        set("chipBlock", "gateway offline");
+      }
+    }
+    refresh();
+    setInterval(refresh, 3000);
+
+    // The header gets a border once the page scrolls.
+    const nav = document.querySelector(".nav");
+    addEventListener("scroll", () => { nav.style.borderBottomColor = scrollY > 10 ? "var(--border)" : "transparent"; }, { passive: true });
+  </script>
+</body>
+</html>
